@@ -5,7 +5,7 @@ import { selectRecommendations, DEFAULT_RECOMMENDATION_CONFIG } from '../selectR
 import { parseMatrix } from '../../matrixParser';
 import type { Program } from '../../types';
 
-function program(id: string, type: 'AND' | 'OR', subdomains: string[]): Program {
+function program(id: string, type: 'SINGLE' | 'AND' | 'OR', subdomains: string[]): Program {
   return { id, name: id, mappings: [{ type, subdomains }] };
 }
 
@@ -91,6 +91,40 @@ describe('selectRecommendations', () => {
     expect(result.rounds.every((r) => r.allScores.every((s) => s.program.id !== 'p2'))).toBe(true);
   });
 
+  it('keeps a SINGLE-mapped program labeled SINGLE end to end, never AND', () => {
+    const programs: Program[] = [program('get-out-of-the-blues', 'SINGLE', ['Depression'])];
+    const scores = { Depression: 18 }; // need 82
+
+    const result = selectRecommendations(programs, scores, {
+      ...DEFAULT_RECOMMENDATION_CONFIG,
+      numberOfRecommendations: 1,
+    });
+
+    expect(result.recommendations[0]?.mappingType).toBe('SINGLE');
+    expect(result.recommendations[0]?.score).toBe(82);
+    expect(result.recommendations[0]?.newCoverage).toEqual(['Depression']);
+  });
+
+  it('keeps an AND-mapped program labeled AND even once only one subdomain remains uncovered', () => {
+    const programs: Program[] = [
+      program('covers-depression-and-stress', 'AND', ['Depression', 'Stress']),
+      program('and-program', 'AND', ['Depression', 'Stress', 'Ångest']),
+    ];
+    // needs: Depression=82, Stress=81, Ångest=78
+    const scores = { Depression: 18, Stress: 19, Ångest: 22 };
+
+    const result = selectRecommendations(programs, scores, {
+      ...DEFAULT_RECOMMENDATION_CONFIG,
+      numberOfRecommendations: 2,
+    });
+
+    const roundTwo = result.rounds[1]?.allScores.find((r) => r.program.id === 'and-program');
+    expect(roundTwo?.consideredSubdomains.map((e) => e.subdomain)).toEqual(['Ångest']);
+    expect(roundTwo?.mappingType).toBe('AND');
+    expect(roundTwo?.mappingType).not.toBe('SINGLE');
+    expect(roundTwo?.score).toBe(78);
+  });
+
   it('stops once every mapped program has been selected', () => {
     const programs: Program[] = [program('p1', 'AND', ['A'])];
     const scores = { A: 50 };
@@ -126,6 +160,25 @@ describe('selectRecommendations against the real matrix', () => {
     const result = selectRecommendations(programs, scores);
 
     expect(result.recommendations[0]?.program.name).toBe('Manage stress');
+  });
+
+  it('labels every single-subdomain program from the real matrix as SINGLE, never AND', () => {
+    const scores = Object.fromEntries(subdomains.map((s) => [s, 50]));
+    const result = selectRecommendations(programs, scores, {
+      ...DEFAULT_RECOMMENDATION_CONFIG,
+      numberOfRecommendations: programs.length,
+    });
+
+    const singleSubdomainPrograms = programs.filter((p) => p.mappings[0]?.subdomains.length === 1);
+    expect(singleSubdomainPrograms.length).toBeGreaterThan(0);
+
+    for (const round of result.rounds) {
+      for (const scored of round.allScores) {
+        if (scored.program.mappings[0]?.subdomains.length === 1) {
+          expect(scored.mappingType).toBe('SINGLE');
+        }
+      }
+    }
   });
 
   it('never lets a later round reconsider a subdomain covered by an earlier one', () => {

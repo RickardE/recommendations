@@ -44,7 +44,9 @@ export default function ProgramCalculation({ result, showCoverage = true }: Prop
               <td>{entry.subdomain}</td>
               <td>{round1(entry.need)}</td>
               <td>
-                {mappingType === 'AND'
+                {mappingType === 'SINGLE'
+                  ? 'matched'
+                  : mappingType === 'AND'
                   ? 'averaged'
                   : newCoverage.includes(entry.subdomain)
                   ? 'strongest (driver)'

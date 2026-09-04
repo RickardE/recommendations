@@ -4,6 +4,7 @@ import type { ProgramMapping } from '../types';
  * Determines which subdomains a mapping "meaningfully covers" if the
  * program is selected right now, given what's already covered.
  *
+ * - SINGLE: the one mapped subdomain becomes covered.
  * - AND: every currently-uncovered mapped subdomain becomes covered (all
  *   mapped subdomains matter equally).
  * - OR: only the subdomain(s) that drove the score become covered, i.e.
@@ -24,7 +25,7 @@ export function getCoveredSubdomains(
   const uncovered = mapping.subdomains.filter((s) => !alreadyCovered.has(s));
   if (uncovered.length === 0) return [];
 
-  if (mapping.type === 'AND') {
+  if (mapping.type === 'SINGLE' || mapping.type === 'AND') {
     return uncovered;
   }
 

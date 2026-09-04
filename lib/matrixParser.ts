@@ -74,11 +74,19 @@ export function tokenizeSubdomainText(text: string): TokenizeResult {
   return { subdomains, hasOr };
 }
 
-function mappingTypeFor(hasOr: boolean): MappingType {
-  // A single subdomain, or an "and"-joined list, is treated as AND. This
-  // is arbitrary when there is exactly one subdomain (AND/OR are
-  // mathematically identical for a single item) but AND reads better as a
-  // default label in the UI.
+/**
+ * The mapping type is derived once, here, from the program's *original*
+ * row in the matrix - and only from that. It must never be re-derived
+ * later from how many subdomains happen to still be uncovered during a
+ * recommendation round (see calculateProgramScore / getCoveredSubdomains,
+ * which both just read this stored type back).
+ *
+ * - exactly one subdomain -> SINGLE, regardless of any stray "or" token.
+ * - more than one subdomain, joined with "or" -> OR.
+ * - more than one subdomain, joined with "and" (the default) -> AND.
+ */
+function mappingTypeFor(subdomainCount: number, hasOr: boolean): MappingType {
+  if (subdomainCount <= 1) return 'SINGLE';
   return hasOr ? 'OR' : 'AND';
 }
 
@@ -167,7 +175,8 @@ export function parseMatrix(tsvContent: string): Program[] {
 
   return rows.map((row) => {
     const { subdomains, hasOr } = tokenizeSubdomainText(row.rawText);
-    const mappings: ProgramMapping[] = subdomains.length > 0 ? [{ type: mappingTypeFor(hasOr), subdomains }] : [];
+    const mappings: ProgramMapping[] =
+      subdomains.length > 0 ? [{ type: mappingTypeFor(subdomains.length, hasOr), subdomains }] : [];
     return {
       id: uniqueId(slugify(row.name), usedIds),
       name: row.name,

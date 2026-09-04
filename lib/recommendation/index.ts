@@ -1,4 +1,5 @@
 export * from './calculateNeeds';
+export * from './calculateSingleScore';
 export * from './calculateAndScore';
 export * from './calculateOrScore';
 export * from './calculateProgramScore';

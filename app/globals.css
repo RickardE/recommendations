@@ -6,6 +6,7 @@
   --muted: #6b6b7a;
   --accent: #4f46e5;
   --accent-light: #eef0ff;
+  --single-color: #6d28d9;
   --and-color: #2563eb;
   --or-color: #d97706;
   --covered: #059669;
@@ -212,6 +213,10 @@ body {
   font-weight: 700;
   letter-spacing: 0.03em;
   color: #fff;
+}
+
+.badge-single {
+  background: var(--single-color);
 }
 
 .badge-and {

@@ -1,7 +1,7 @@
 // Core domain types for the recommendation prototype.
 // Kept deliberately small and explicit so the algorithm stays inspectable.
 
-export type MappingType = 'AND' | 'OR';
+export type MappingType = 'SINGLE' | 'AND' | 'OR';
 
 export type ProgramMapping = {
   type: MappingType;

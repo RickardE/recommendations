@@ -4,6 +4,11 @@ import { getCoveredSubdomains } from '../getCoveredSubdomains';
 const needs = { A: 90, B: 40, C: 40, D: 10 };
 
 describe('getCoveredSubdomains', () => {
+  it('SINGLE: covers the one mapped subdomain', () => {
+    const covered = getCoveredSubdomains({ type: 'SINGLE', subdomains: ['Depression'] }, needs, new Set());
+    expect(covered).toEqual(['Depression']);
+  });
+
   it('AND: covers every uncovered mapped subdomain', () => {
     const covered = getCoveredSubdomains({ type: 'AND', subdomains: ['A', 'B', 'D'] }, needs, new Set());
     expect(covered.sort()).toEqual(['A', 'B', 'D']);

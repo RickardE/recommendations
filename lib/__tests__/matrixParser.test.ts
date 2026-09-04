@@ -50,6 +50,12 @@ describe('parseMatrix', () => {
     ]);
   });
 
+  it('parses a program with exactly one mapped subdomain as SINGLE, not AND', () => {
+    const tsv = ['Ahum services\tSubdomains primary match', 'Get out of the blues\tDepression'].join('\n');
+    const programs = parseMatrix(tsv);
+    expect(programs[0]?.mappings).toEqual([{ type: 'SINGLE', subdomains: ['Depression'] }]);
+  });
+
   it('treats a program with an empty subdomains cell as unmapped', () => {
     const tsv = ['Ahum services\tSubdomains primary match', 'Stop procrastinating\t'].join('\n');
     const programs = parseMatrix(tsv);
@@ -108,6 +114,21 @@ describe('parseMatrix', () => {
       expect(program?.mappings).toEqual([
         { type: 'AND', subdomains: ['Tidsupplevelse', 'Stress', 'Sömn', 'Mentalt välbefinnande'] },
       ]);
+    });
+
+    it('parses every genuinely single-subdomain program as SINGLE, not AND', () => {
+      // These rows have exactly one mapped subdomain in table.tsv.
+      const expected: Record<string, string> = {
+        'Manage stress': 'Stress',
+        'Overcome your worry': 'Ångest',
+        'Get out of the blues': 'Depression',
+        'Get healthier drinking habits': 'Alkohol',
+        'Sleep better': 'Sömn',
+      };
+      for (const [name, subdomain] of Object.entries(expected)) {
+        const program = programs.find((p) => p.name === name);
+        expect(program?.mappings, name).toEqual([{ type: 'SINGLE', subdomains: [subdomain] }]);
+      }
     });
 
     it('derives all 12 subdomains in first-appearance order', () => {
