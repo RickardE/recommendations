@@ -4,12 +4,19 @@ import type { ProgramMapping } from '../types';
  * Determines which subdomains a mapping "meaningfully covers" if the
  * program is selected right now, given what's already covered.
  *
- * - SINGLE: the one mapped subdomain becomes covered.
- * - AND: every currently-uncovered mapped subdomain becomes covered (all
- *   mapped subdomains matter equally).
- * - OR: only the subdomain(s) that drove the score become covered, i.e.
- *   the uncovered mapped subdomain(s) with the highest need. Ties count
- *   as all covered.
+ * COVERAGE RULE: every currently-uncovered mapped subdomain becomes
+ * covered - regardless of mapping type. This applies just as much to OR
+ * as to SINGLE/AND: an OR program's "driver" (its strongest-need
+ * subdomain) only explains *why* it scored the way it did, it does not
+ * limit what gets covered. Selecting "Nutrition OR Physical activity"
+ * covers both Nutrition and Physical activity, not just whichever one
+ * happened to have the higher need - otherwise a later round could
+ * recommend a different program purely to "re-cover" a subdomain this one
+ * was already mapped to.
+ *
+ * `needs` is accepted for signature stability (earlier versions of this
+ * function used it to pick the OR driver) but is unused now that coverage
+ * no longer depends on need values at all.
  *
  * Needs are static for the whole algorithm run (they only depend on the
  * user's scores), so this only needs the mapping and the running covered
@@ -17,20 +24,10 @@ import type { ProgramMapping } from '../types';
  */
 export function getCoveredSubdomains(
   mapping: ProgramMapping | undefined,
-  needs: Record<string, number>,
+  _needs: Record<string, number>,
   alreadyCovered: ReadonlySet<string>
 ): string[] {
   if (!mapping) return [];
 
-  const uncovered = mapping.subdomains.filter((s) => !alreadyCovered.has(s));
-  if (uncovered.length === 0) return [];
-
-  if (mapping.type === 'SINGLE' || mapping.type === 'AND') {
-    return uncovered;
-  }
-
-  // OR
-  const withNeeds = uncovered.map((subdomain) => ({ subdomain, need: needs[subdomain] ?? 0 }));
-  const maxNeed = Math.max(...withNeeds.map((e) => e.need));
-  return withNeeds.filter((e) => e.need === maxNeed).map((e) => e.subdomain);
+  return mapping.subdomains.filter((s) => !alreadyCovered.has(s));
 }

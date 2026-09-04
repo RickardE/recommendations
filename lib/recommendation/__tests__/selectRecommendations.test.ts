@@ -290,6 +290,81 @@ describe('selectRecommendations (subdomain-first)', () => {
   });
 });
 
+// Coverage rule: SELECTED PROGRAM -> ALL MAPPED SUBDOMAINS BECOME COVERED.
+// The OR driver only explains relevance; it must never limit coverage.
+describe('selectRecommendations: OR coverage rule', () => {
+  // Test 1 (integration-level): selecting an OR program covers every one
+  // of its mapped subdomains, not just the driver.
+  it('Test 1: selecting "Create healthy routines" covers both Nutrition and Physical activity', () => {
+    const programs: Program[] = [program('create-healthy-routines', 'OR', ['Nutrition', 'Physical activity'])];
+    const scores = { Nutrition: 20, 'Physical activity': 4 }; // needs: Nutrition=80, Physical activity=96
+
+    const result = selectRecommendations(programs, scores, {
+      ...DEFAULT_RECOMMENDATION_CONFIG,
+      numberOfRecommendations: 1,
+    });
+
+    const selected = result.recommendations[0]!;
+    expect(selected.driverSubdomains).toEqual(['Physical activity']); // explains the score
+    expect(selected.newCoverage.sort()).toEqual(['Nutrition', 'Physical activity']); // both covered
+    expect(result.rounds[0]?.coveredAfter.sort()).toEqual(['Nutrition', 'Physical activity']);
+  });
+
+  // Test 2: a program overlapping only in already-covered OR subdomains
+  // must not be selected as a way of re-targeting them.
+  it('Test 2: prevents a later, overlapping OR recommendation once its subdomains are already covered', () => {
+    const programs: Program[] = [
+      program('a', 'OR', ['Nutrition', 'Physical activity']),
+      program('b', 'OR', ['Nutrition', 'Tobacco', 'Physical activity']),
+    ];
+    // needs: Nutrition=80, Physical activity=96, Tobacco=72
+    const scores = { Nutrition: 20, 'Physical activity': 4, Tobacco: 28 };
+
+    const result = selectRecommendations(programs, scores, {
+      ...DEFAULT_RECOMMENDATION_CONFIG,
+      numberOfRecommendations: 2,
+    });
+
+    // Round 1: Physical activity (96) is the highest need -> program a.
+    expect(result.rounds[0]?.targetSubdomain).toBe('Physical activity');
+    expect(result.recommendations[0]?.program.id).toBe('a');
+    // Selecting a covers BOTH Nutrition and Physical activity, not just
+    // the driver - so the next target must be Tobacco, not Nutrition.
+    expect(result.rounds[0]?.coveredAfter.sort()).toEqual(['Nutrition', 'Physical activity']);
+
+    // Round 2: only Tobacco is left uncovered -> program b, scored using
+    // only Tobacco (Nutrition and Physical activity ignored, already covered).
+    expect(result.rounds[1]?.targetSubdomain).toBe('Tobacco');
+    expect(result.recommendations[1]?.program.id).toBe('b');
+    expect(result.recommendations[1]?.consideredSubdomains.map((e) => e.subdomain)).toEqual(['Tobacco']);
+    expect(result.recommendations[1]?.ignoredCoveredSubdomains.sort()).toEqual(['Nutrition', 'Physical activity']);
+  });
+
+  // Test 5: a program whose mapped subdomains are ALL already covered
+  // must not be selected.
+  it('Test 5: excludes an OR program once all of its mapped subdomains are already covered', () => {
+    const programs: Program[] = [
+      // Covers Nutrition and Physical activity as a side effect of a
+      // higher-need, unrelated target.
+      program('and-covers-both', 'AND', ['Other', 'Nutrition', 'Physical activity']),
+      program('nutrition-or-activity', 'OR', ['Nutrition', 'Physical activity']),
+    ];
+    const scores = { Other: 0, Nutrition: 20, 'Physical activity': 4 }; // needs: Other=100, Nutrition=80, Physical activity=96
+
+    const result = selectRecommendations(programs, scores, {
+      ...DEFAULT_RECOMMENDATION_CONFIG,
+      numberOfRecommendations: 3,
+    });
+
+    expect(result.recommendations.map((r) => r.program.id)).toEqual(['and-covers-both']);
+    // nutrition-or-activity must never be a candidate once both of its
+    // mapped subdomains are covered.
+    for (const round of result.rounds) {
+      expect(round.allScores.some((s) => s.program.id === 'nutrition-or-activity')).toBe(false);
+    }
+  });
+});
+
 describe('selectRecommendations against the real matrix', () => {
   const tsvContent = fs.readFileSync(path.join(__dirname, '../../../data/table.tsv'), 'utf8');
   const programs = parseMatrix(tsvContent);

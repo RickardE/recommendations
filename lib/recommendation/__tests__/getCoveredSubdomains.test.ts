@@ -14,19 +14,22 @@ describe('getCoveredSubdomains', () => {
     expect(covered.sort()).toEqual(['A', 'B', 'D']);
   });
 
-  it('OR: covers only the strongest-need subdomain', () => {
+  // COVERAGE RULE: OR covers every uncovered mapped subdomain, not just
+  // the driver (the strongest-need one). The driver only explains the
+  // score - it must never limit coverage.
+  it('OR: covers every uncovered mapped subdomain, not just the strongest-need one', () => {
     const covered = getCoveredSubdomains({ type: 'OR', subdomains: ['A', 'D'] }, needs, new Set());
-    expect(covered).toEqual(['A']);
+    expect(covered.sort()).toEqual(['A', 'D']);
   });
 
-  it('OR: covers all tied-highest subdomains', () => {
+  it('OR: covers all mapped subdomains regardless of tied or distinct needs', () => {
     const covered = getCoveredSubdomains({ type: 'OR', subdomains: ['B', 'C', 'D'] }, needs, new Set());
-    expect(covered.sort()).toEqual(['B', 'C']);
+    expect(covered.sort()).toEqual(['B', 'C', 'D']);
   });
 
   it('excludes already-covered subdomains from consideration', () => {
     const covered = getCoveredSubdomains({ type: 'OR', subdomains: ['A', 'D'] }, needs, new Set(['A']));
-    // With A already covered, D (the only remaining one) becomes the driver.
+    // A is already covered, so only D is newly covered here.
     expect(covered).toEqual(['D']);
   });
 

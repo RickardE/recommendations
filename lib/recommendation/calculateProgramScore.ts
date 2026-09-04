@@ -39,6 +39,7 @@ export function calculateProgramScore(
       formula: 'No subdomain mapping',
       contributingSubdomains: [],
       newCoverage: [],
+      driverSubdomains: [],
     };
   }
 
@@ -62,6 +63,7 @@ export function calculateProgramScore(
       formula: 'All mapped subdomains are already covered',
       contributingSubdomains: [],
       newCoverage: [],
+      driverSubdomains: [],
     };
   }
 
@@ -78,6 +80,7 @@ export function calculateProgramScore(
       contributingSubdomains: considered.map((e) => e.subdomain),
       // SINGLE: the one mapped subdomain is newly covered.
       newCoverage: considered.map((e) => e.subdomain),
+      driverSubdomains: [],
     };
   }
 
@@ -98,6 +101,7 @@ export function calculateProgramScore(
       // mapping type always comes from `mapping.type` above, never from
       // considered.length.
       newCoverage: considered.map((e) => e.subdomain),
+      driverSubdomains: [],
     };
   }
 
@@ -111,7 +115,15 @@ export function calculateProgramScore(
     score,
     formula,
     contributingSubdomains: considered.map((e) => e.subdomain),
-    // OR: only the driver(s) - the strongest need(s) - are newly covered.
-    newCoverage: driverSubdomains,
+    // COVERAGE RULE: selecting an OR program covers every one of its
+    // mapped subdomains, not just the driver - otherwise a later round
+    // could recommend a different program purely to "re-cover" a
+    // subdomain this one was already mapped to (see selectRecommendations
+    // Test 2: overlapping OR programs). The driver is kept as a wholly
+    // separate field below, purely to explain the score.
+    newCoverage: considered.map((e) => e.subdomain),
+    // Explanatory only - the strongest-need subdomain(s) that drove the
+    // score. Must NOT be used to determine coverage.
+    driverSubdomains,
   };
 }

@@ -45,10 +45,15 @@ export function calculateOrScore(entries: SubdomainNeedEntry[]): OrScoreCalculat
   }
 
   const avgOthers = others.reduce((total, e) => total + e.need, 0) / others.length;
-  const score = maxNeed + avgOthers * 0.1;
+  const rawScore = maxNeed + avgOthers * 0.1;
+  // Needs are normally 0-100, but the bonus term can push the raw sum
+  // slightly past 100 (e.g. maxNeed=99, avgOthers=96 -> 108.6) - relevance
+  // is capped back down to the same [0, 100] scale as every other score.
+  const score = Math.min(100, rawScore);
+  const cappedNote = score < rawScore ? `, capped at 100` : '';
   const formula = `${maxNeed} + (avg(${others.map((e) => e.need).join(', ')}) × 0.1) = ${maxNeed} + (${round1(
     avgOthers
-  )} × 0.1) = ${round1(score)}`;
+  )} × 0.1) = ${round1(rawScore)}${cappedNote}`;
 
   return { score, formula, driverSubdomains: drivers.map((e) => e.subdomain) };
 }

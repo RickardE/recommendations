@@ -22,8 +22,8 @@ export default function ProgramCalculation({ result, showCoverage = true }: Prop
     consideredSubdomains,
     ignoredCoveredSubdomains,
     formula,
-    contributingSubdomains,
     newCoverage,
+    driverSubdomains,
   } = result;
 
   if (mappingType === null) {
@@ -63,7 +63,7 @@ export default function ProgramCalculation({ result, showCoverage = true }: Prop
                   ? 'matched'
                   : mappingType === 'AND'
                   ? 'averaged'
-                  : newCoverage.includes(entry.subdomain)
+                  : driverSubdomains.includes(entry.subdomain)
                   ? 'strongest (driver)'
                   : '+10% bonus'}
               </td>
@@ -95,10 +95,10 @@ export default function ProgramCalculation({ result, showCoverage = true }: Prop
         </div>
       )}
 
-      {mappingType === 'OR' && contributingSubdomains.length > newCoverage.length && (
+      {mappingType === 'OR' && driverSubdomains.length > 0 && (
         <div className="muted small">
-          Contributed to score but not newly covered:{' '}
-          {contributingSubdomains.filter((s) => !newCoverage.includes(s)).join(', ')}
+          Driver (strongest need - explains the score, not what gets covered):{' '}
+          {driverSubdomains.join(', ')}
         </div>
       )}
     </div>

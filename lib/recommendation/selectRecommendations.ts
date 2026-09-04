@@ -44,13 +44,16 @@ function buildSubdomainOrder(programs: Program[]): string[] {
  *      target subdomain is a candidate, scored using its original mapping
  *      type (SINGLE/AND/OR - see calculateProgramScore) and only the
  *      subdomains still uncovered.
- *   7-8. The highest-scoring candidate that actually covers the target
- *      subdomain is selected. (A program mapped to the target can still
- *      score without covering it - e.g. an OR program where a different,
- *      still-uncovered subdomain of its own is the driver - so this is
- *      not simply "the top of the sorted list"; see the note below.)
- *   9-10. Its newly-covered subdomains are marked covered, and the next
- *      round repeats with the next highest-need uncovered subdomain.
+ *   7-8. The highest-scoring candidate is selected.
+ *   9-10. COVERAGE RULE: selecting a program covers *every* one of its
+ *      mapped subdomains that's still uncovered - all of them, regardless
+ *      of mapping type. In particular, an OR program's "driver" (its
+ *      strongest-need subdomain, which explains the score) is NOT the
+ *      only thing that gets covered - see calculateProgramScore's OR
+ *      branch. This is what stops a later round from recommending a
+ *      different program purely to "re-cover" a subdomain the first
+ *      program was already mapped to. The next round then repeats with
+ *      the next highest-need still-uncovered subdomain.
  *
  * If no uncovered subdomain has any remaining candidate left (every
  * mapped program either got selected already or has nothing left
@@ -58,14 +61,11 @@ function buildSubdomainOrder(programs: Program[]): string[] {
  * is no "pick something anyway" fallback. A program is never recommended
  * again once every one of its mapped subdomains is covered.
  *
- * NOTE on "target's driver" guarantee: because the target is, by
- * construction, the single highest-need subdomain still uncovered across
- * the *entire* matrix, it is never out-scored within its own program's OR
- * calculation by a co-mapped subdomain (any other uncovered subdomain in
- * the same program has need <= the target's, by definition of "highest").
- * So in practice a candidate whose mapping includes the uncovered target
- * always covers it if selected - the `newCoverage.includes(target)` check
- * below is a defensive belt-and-braces guard, not a expected filter.
+ * Because candidates are only ever drawn from programs still mapped to the
+ * (uncovered) target, and coverage now includes every considered
+ * subdomain, every candidate necessarily covers the target if selected -
+ * the `newCoverage.includes(target)` check below is a defensive
+ * belt-and-braces guard, not an expected filter.
  */
 export function selectRecommendations(
   programs: Program[],

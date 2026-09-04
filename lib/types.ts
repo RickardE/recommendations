@@ -64,8 +64,22 @@ export type ProgramScoreResult = {
    * field for readability at call sites.
    */
   contributingSubdomains: string[];
-  /** Subdomains this program would newly cover if selected right now. */
+  /**
+   * Every subdomain this program would newly cover if selected right now -
+   * i.e. all of consideredSubdomains, regardless of mapping type. Coverage
+   * is intentionally NOT limited to the OR driver: selecting a program
+   * covers its whole mapping, so a later round never re-targets a
+   * subdomain this program was also mapped to. See `driverSubdomains` for
+   * the (separate) concept of which subdomain explains an OR score.
+   */
   newCoverage: string[];
+  /**
+   * OR only: the uncovered mapped subdomain(s) with the highest need -
+   * the one(s) that explain *why* this OR program scored the way it did.
+   * Purely explanatory; it does NOT determine coverage (see `newCoverage`).
+   * Empty for SINGLE/AND, where the concept doesn't apply.
+   */
+  driverSubdomains: string[];
 };
 
 export type SelectionType = 'primary' | 'none';
