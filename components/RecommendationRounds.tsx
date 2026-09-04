@@ -11,15 +11,19 @@ export default function RecommendationRounds({ rounds }: Props) {
     <section className="card">
       <h2>3. Recommendation rounds</h2>
       <p className="muted">
-        Covered subdomains are removed before the next round's scores are calculated. This is where you can see the
-        algorithm actually behave, round by round.
+        Each round targets the highest-need subdomain that isn't covered yet, then picks the best program still
+        mapped to it. This is where you can see the algorithm actually behave, round by round.
       </p>
       <div className="rounds">
         {rounds.map((round) => (
           <div className="round" key={round.round}>
             <div className="round-header">
               <h3>Round {round.round}</h3>
-              {round.selectionType === 'fallback' && <span className="badge badge-fallback">redundancy fallback</span>}
+              {round.targetSubdomain && (
+                <span className="muted small">
+                  target subdomain: <strong>{round.targetSubdomain}</strong>
+                </span>
+              )}
               {round.selectionType === 'none' && <span className="badge badge-none">no candidate found</span>}
             </div>
 

@@ -1,36 +1,71 @@
 import type { Program, ProgramScoreResult, RecommendationResult, RoundResult } from '../types';
 import { calculateNeeds } from './calculateNeeds';
 import { calculateProgramScore } from './calculateProgramScore';
-import { calculateRedundancyFactor, REDUNDANCY_BUCKETS, type RedundancyBucket } from './calculateRedundancy';
-import { round1 } from './format';
 
 export type RecommendationConfig = {
   /** How many programs to select. */
   numberOfRecommendations: number;
-  /** A program needs at least this many newly-covered subdomains to count as "meaningful". */
-  minNewCoverageCount: number;
-  /** Redundancy buckets used by the fallback path, see calculateRedundancy.ts. */
-  redundancyBuckets: RedundancyBucket[];
 };
 
 export const DEFAULT_RECOMMENDATION_CONFIG: RecommendationConfig = {
   numberOfRecommendations: 3,
-  minNewCoverageCount: 1,
-  redundancyBuckets: REDUNDANCY_BUCKETS,
 };
 
 /**
- * Runs the full round-by-round recommendation algorithm:
+ * First-appearance order of every subdomain referenced by any program's
+ * mapping, in `programs` order. Used purely as a deterministic tie-break
+ * when two or more subdomains share the same need (see step 2-3 below) -
+ * it has no effect on which subdomain wins unless needs are exactly equal.
+ */
+function buildSubdomainOrder(programs: Program[]): string[] {
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+  for (const program of programs) {
+    for (const subdomain of program.mappings[0]?.subdomains ?? []) {
+      if (!seen.has(subdomain)) {
+        seen.add(subdomain);
+        ordered.push(subdomain);
+      }
+    }
+  }
+  return ordered;
+}
+
+/**
+ * Runs the full round-by-round recommendation algorithm, SUBDOMAIN-FIRST:
  *
- * Each round, every not-yet-selected, mapped program is scored using only
- * still-uncovered subdomains ("primary" scoring). The highest-scoring
- * program that contributes at least `minNewCoverageCount` newly-covered
- * subdomains is selected.
+ * Each round:
+ *   1. need = 100 - userScore for every subdomain (calculated once, up
+ *      front - needs are static for the whole run).
+ *   2-4. Among subdomains not yet covered, find the one with the highest
+ *      need that at least one remaining program is still mapped to. That
+ *      is this round's *target subdomain*.
+ *   5-6. Every remaining program whose ORIGINAL mapping includes the
+ *      target subdomain is a candidate, scored using its original mapping
+ *      type (SINGLE/AND/OR - see calculateProgramScore) and only the
+ *      subdomains still uncovered.
+ *   7-8. The highest-scoring candidate that actually covers the target
+ *      subdomain is selected. (A program mapped to the target can still
+ *      score without covering it - e.g. an OR program where a different,
+ *      still-uncovered subdomain of its own is the driver - so this is
+ *      not simply "the top of the sorted list"; see the note below.)
+ *   9-10. Its newly-covered subdomains are marked covered, and the next
+ *      round repeats with the next highest-need uncovered subdomain.
  *
- * If no remaining program offers meaningful new coverage, we fall back
- * (step 8 of the spec): score every remaining program on its full,
- * original mapping, apply a redundancy penalty based on how much it
- * overlaps with what's already covered, and pick the best of those.
+ * If no uncovered subdomain has any remaining candidate left (every
+ * mapped program either got selected already or has nothing left
+ * uncovered to offer), the round - and the whole run - stops there; there
+ * is no "pick something anyway" fallback. A program is never recommended
+ * again once every one of its mapped subdomains is covered.
+ *
+ * NOTE on "target's driver" guarantee: because the target is, by
+ * construction, the single highest-need subdomain still uncovered across
+ * the *entire* matrix, it is never out-scored within its own program's OR
+ * calculation by a co-mapped subdomain (any other uncovered subdomain in
+ * the same program has need <= the target's, by definition of "highest").
+ * So in practice a candidate whose mapping includes the uncovered target
+ * always covers it if selected - the `newCoverage.includes(target)` check
+ * below is a defensive belt-and-braces guard, not a expected filter.
  */
 export function selectRecommendations(
   programs: Program[],
@@ -46,59 +81,40 @@ export function selectRecommendations(
   const mappedPrograms = programs.filter((p) => (p.mappings[0]?.subdomains.length ?? 0) > 0);
   const unmappedPrograms = programs.filter((p) => (p.mappings[0]?.subdomains.length ?? 0) === 0);
 
+  const subdomainOrder = buildSubdomainOrder(programs);
+
   for (let round = 1; round <= config.numberOfRecommendations; round += 1) {
     const remaining = mappedPrograms.filter((p) => !selectedIds.has(p.id));
     if (remaining.length === 0) break;
 
     const coveredBefore = Array.from(coveredSet);
 
-    const primaryScores = remaining
-      .map((p) => calculateProgramScore(p, needs, coveredSet))
-      .sort((a, b) => b.score - a.score);
+    // Steps 2-3: uncovered subdomains, highest need first. Array.sort is
+    // stable, and subdomainOrder is already deterministic, so equal-need
+    // subdomains keep subdomainOrder's relative order.
+    const uncoveredByNeed = subdomainOrder
+      .filter((s) => !coveredSet.has(s))
+      .sort((a, b) => (needs[b] ?? 0) - (needs[a] ?? 0));
 
-    const withNewCoverage = primaryScores.filter((r) => r.newCoverage.length >= config.minNewCoverageCount);
-
-    let selectionType: RoundResult['selectionType'] = 'primary';
-    let allScores: ProgramScoreResult[] = primaryScores;
-    let selected: ProgramScoreResult | null = null;
-
-    if (withNewCoverage.length > 0) {
-      selected = withNewCoverage[0]!;
-    } else {
-      // Fallback path: nothing left offers new coverage. Score every
-      // remaining program on its full mapping and penalize for overlap.
-      selectionType = 'fallback';
-      const emptyCoverage = new Set<string>();
-      const fallbackScores = remaining
-        .map((p) => {
-          const full = calculateProgramScore(p, needs, emptyCoverage);
-          const mapping = p.mappings[0];
-          const redundancy = calculateRedundancyFactor(
-            mapping?.subdomains ?? [],
-            coveredSet,
-            config.redundancyBuckets
-          );
-          const penalizedScore = full.score * redundancy.factor;
-          return {
-            ...full,
-            score: penalizedScore,
-            formula: `${full.formula}, then × redundancy factor ${redundancy.factor} (${redundancy.label}, ${round1(
-              redundancy.ratio * 100
-            )}% already covered) = ${round1(penalizedScore)}`,
-            newCoverage: [], // by construction these programs offer nothing new
-            redundancy,
-          };
-        })
-        .sort((a, b) => b.score - a.score);
-      allScores = fallbackScores;
-      selected = fallbackScores[0] ?? null;
+    // Step 4-5: the first uncovered subdomain (highest need) that some
+    // remaining program is still mapped to becomes the target.
+    let target: string | null = null;
+    let candidates: Program[] = [];
+    for (const subdomain of uncoveredByNeed) {
+      const mappedToThis = remaining.filter((p) => p.mappings[0]!.subdomains.includes(subdomain));
+      if (mappedToThis.length > 0) {
+        target = subdomain;
+        candidates = mappedToThis;
+        break;
+      }
     }
 
-    if (!selected) {
+    if (!target) {
       rounds.push({
         round,
         selectionType: 'none',
-        allScores,
+        targetSubdomain: null,
+        allScores: [],
         selected: null,
         coveredBefore,
         coveredAfter: coveredBefore,
@@ -106,12 +122,46 @@ export function selectRecommendations(
       break;
     }
 
+    // Steps 6-7: score every candidate using its ORIGINAL mapping type,
+    // considering only currently-uncovered subdomains (already exactly
+    // what calculateProgramScore does).
+    const scored = candidates
+      .map((p) => ({ ...calculateProgramScore(p, needs, coveredSet), targetSubdomain: target }))
+      .sort((a, b) => b.score - a.score);
+
+    // Step 8: only a candidate that actually covers the target counts
+    // (see the NOTE in the doc comment above for why this in practice
+    // never excludes the top-scored candidate).
+    const selected = scored.find((r) => r.newCoverage.includes(target)) ?? null;
+
+    if (!selected) {
+      rounds.push({
+        round,
+        selectionType: 'none',
+        targetSubdomain: target,
+        allScores: scored,
+        selected: null,
+        coveredBefore,
+        coveredAfter: coveredBefore,
+      });
+      break;
+    }
+
+    // Step 9
     selectedIds.add(selected.program.id);
     recommendations.push(selected);
     for (const subdomain of selected.newCoverage) coveredSet.add(subdomain);
     const coveredAfter = Array.from(coveredSet);
 
-    rounds.push({ round, selectionType, allScores, selected, coveredBefore, coveredAfter });
+    rounds.push({
+      round,
+      selectionType: 'primary',
+      targetSubdomain: target,
+      allScores: scored,
+      selected,
+      coveredBefore,
+      coveredAfter,
+    });
   }
 
   return { needs, rounds, recommendations, unmappedPrograms };

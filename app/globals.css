@@ -10,7 +10,6 @@
   --and-color: #2563eb;
   --or-color: #d97706;
   --covered: #059669;
-  --fallback: #b45309;
   --danger: #dc2626;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif;
 }
@@ -225,10 +224,6 @@ body {
 
 .badge-or {
   background: var(--or-color);
-}
-
-.badge-fallback {
-  background: var(--fallback);
 }
 
 .badge-none {

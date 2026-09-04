@@ -16,12 +16,17 @@ export default function ProgramScores({ rounds }: Props) {
     <section className="card">
       <h2>4. All program scores (debug)</h2>
       <p className="muted">
-        Every eligible remaining program's score for each round. Click a row to see exactly how it was calculated.
+        Every remaining program mapped to that round's target subdomain (the highest-need subdomain still
+        uncovered), scored using its original SINGLE/AND/OR mapping type. Click a row to see exactly how it was
+        calculated.
       </p>
       <div className="rounds">
         {rounds.map((round) => (
           <div key={round.round} className="round-scores">
-            <h3>Round {round.round}</h3>
+            <h3>
+              Round {round.round}
+              {round.targetSubdomain && <span className="muted"> — target subdomain: {round.targetSubdomain}</span>}
+            </h3>
             <table className="score-table">
               <thead>
                 <tr>

@@ -26,25 +26,34 @@ export type SubdomainNeedEntry = {
   need: number;
 };
 
-export type RedundancyInfo = {
-  /** fraction (0-1) of the program's full mapping already covered */
-  ratio: number;
-  /** multiplier applied to the score */
-  factor: number;
-  /** human readable bucket name, e.g. "High overlap" */
-  label: string;
-};
-
 export type ProgramScoreResult = {
   program: Program;
-  /** null when the program has no subdomain mapping at all */
+  /**
+   * The program's ORIGINAL mapping type, taken as-is from the matrix.
+   * Coverage never changes this - an AND program is still AND even once
+   * only one of its subdomains remains uncovered. null when the program
+   * has no subdomain mapping at all.
+   */
   mappingType: MappingType | null;
+  /**
+   * The subdomain-first target that caused this program to be evaluated
+   * (see selectRecommendations.ts: step 4 of the selection algorithm).
+   * null when a program is scored outside that round context (e.g. in a
+   * unit test calling calculateProgramScore directly).
+   */
+  targetSubdomain: string | null;
   /**
    * The subdomains actually used in this calculation (i.e. the program's
    * mapped subdomains minus whatever was already covered coming into this
    * round), together with their (static) need values.
    */
   consideredSubdomains: SubdomainNeedEntry[];
+  /**
+   * Originally-mapped subdomains that are already covered, and were
+   * therefore excluded from this calculation entirely. Equal to
+   * program.mappings[0].subdomains minus consideredSubdomains.
+   */
+  ignoredCoveredSubdomains: string[];
   score: number;
   /** human readable calculation, shown verbatim in the UI for debugging */
   formula: string;
@@ -57,16 +66,21 @@ export type ProgramScoreResult = {
   contributingSubdomains: string[];
   /** Subdomains this program would newly cover if selected right now. */
   newCoverage: string[];
-  /** Only present when this score went through the redundancy fallback path. */
-  redundancy?: RedundancyInfo;
 };
 
-export type SelectionType = 'primary' | 'fallback' | 'none';
+export type SelectionType = 'primary' | 'none';
 
 export type RoundResult = {
   round: number;
   selectionType: SelectionType;
-  /** Every eligible remaining program's score this round, sorted best-first. */
+  /**
+   * The highest-need uncovered subdomain this round was driven by, i.e.
+   * step 3-4 of the subdomain-first selection algorithm. null only when no
+   * uncovered subdomain had any remaining candidate program left
+   * (selectionType 'none').
+   */
+  targetSubdomain: string | null;
+  /** Every candidate mapped to targetSubdomain, scored, sorted best-first. */
   allScores: ProgramScoreResult[];
   selected: ProgramScoreResult | null;
   coveredBefore: string[];

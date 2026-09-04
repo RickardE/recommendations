@@ -8,14 +8,23 @@ type Props = {
 };
 
 /**
- * Renders the full "why" for a single program's score: mapping type,
- * subdomains considered, the exact formula, and (optionally) which
- * subdomains it would newly cover. Reused by Recommendations,
- * RecommendationRounds and ProgramScores so the explanation looks
- * identical everywhere in the UI.
+ * Renders the full "why" for a single program's score: the subdomain that
+ * caused it to be evaluated this round, its original mapping type,
+ * subdomains considered vs. ignored (already covered), the exact formula,
+ * and (optionally) which subdomains it would newly cover. Reused by
+ * Recommendations, RecommendationRounds and ProgramScores so the
+ * explanation looks identical everywhere in the UI.
  */
 export default function ProgramCalculation({ result, showCoverage = true }: Props) {
-  const { mappingType, consideredSubdomains, formula, contributingSubdomains, newCoverage, redundancy } = result;
+  const {
+    mappingType,
+    targetSubdomain,
+    consideredSubdomains,
+    ignoredCoveredSubdomains,
+    formula,
+    contributingSubdomains,
+    newCoverage,
+  } = result;
 
   if (mappingType === null) {
     return <p className="muted">No subdomain mapping for this program.</p>;
@@ -29,6 +38,12 @@ export default function ProgramCalculation({ result, showCoverage = true }: Prop
           {consideredSubdomains.length} subdomain{consideredSubdomains.length === 1 ? '' : 's'} considered
         </span>
       </div>
+
+      {targetSubdomain && (
+        <div className="muted small">
+          Evaluated for target subdomain: <strong>{targetSubdomain}</strong>
+        </div>
+      )}
 
       <table className="mini-table">
         <thead>
@@ -59,10 +74,9 @@ export default function ProgramCalculation({ result, showCoverage = true }: Prop
 
       <div className="formula">Calculation: {formula}</div>
 
-      {redundancy && (
+      {ignoredCoveredSubdomains.length > 0 && (
         <div className="muted small">
-          Redundancy: {redundancy.label} — {round1(redundancy.ratio * 100)}% of this program's full mapping was
-          already covered, factor ×{redundancy.factor}.
+          Ignored (already covered): {ignoredCoveredSubdomains.join(', ')}
         </div>
       )}
 

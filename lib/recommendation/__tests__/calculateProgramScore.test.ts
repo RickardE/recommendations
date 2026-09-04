@@ -61,6 +61,7 @@ describe('calculateProgramScore', () => {
     expect(result.score).toBe(0);
     expect(result.consideredSubdomains).toEqual([]);
     expect(result.newCoverage).toEqual([]);
+    expect(result.ignoredCoveredSubdomains).toEqual(['Stress']);
   });
 
   // TEST 2: "Become more mindful" -> Smärta OR Stress. Smärta=50, Stress=81.
@@ -98,6 +99,7 @@ describe('calculateProgramScore', () => {
       expect(result.mappingType).not.toBe('SINGLE');
       expect(result.score).toBe(78);
       expect(result.newCoverage).toEqual(['Ångest']);
+      expect(result.ignoredCoveredSubdomains.sort()).toEqual(['Depression', 'Stress']);
     });
   });
 

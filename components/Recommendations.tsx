@@ -20,7 +20,7 @@ export default function Recommendations({ recommendations }: Props) {
                 <span className="recommendation-rank">#{i + 1}</span>
                 <div>
                   <h3>{rec.program.name}</h3>
-                  {rec.redundancy && <span className="badge badge-fallback">redundancy fallback</span>}
+                  {rec.targetSubdomain && <span className="muted small">for {rec.targetSubdomain}</span>}
                 </div>
                 <span className="score-pill">{round1(rec.score)}</span>
               </div>

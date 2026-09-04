@@ -8,8 +8,18 @@ import { calculateSingleScore } from './calculateSingleScore';
  * subdomains that are not already in `coveredSet`. Pass an empty set to
  * get the program's "full", uncovered-agnostic score.
  *
- * This is the one place AND vs. OR semantics are dispatched - see
- * calculateAndScore / calculateOrScore for the actual formulas.
+ * This is the one place SINGLE vs. AND vs. OR semantics are dispatched -
+ * see calculateSingleScore / calculateAndScore / calculateOrScore for the
+ * actual formulas. The mapping type used here always comes straight from
+ * `program.mappings[0].type` (the original matrix), never from how many
+ * subdomains happen to still be uncovered - see the comments on each
+ * branch below.
+ *
+ * `targetSubdomain` is not set here - it is a property of *which round*
+ * this score was computed for (see selectRecommendations.ts), not of the
+ * program/needs/coveredSet inputs alone, so callers outside that round
+ * context (e.g. unit tests) get `targetSubdomain: null` and
+ * selectRecommendations fills it in afterwards.
  */
 export function calculateProgramScore(
   program: Program,
@@ -22,7 +32,9 @@ export function calculateProgramScore(
     return {
       program,
       mappingType: null,
+      targetSubdomain: null,
       consideredSubdomains: [],
+      ignoredCoveredSubdomains: [],
       score: 0,
       formula: 'No subdomain mapping',
       contributingSubdomains: [],
@@ -34,11 +46,18 @@ export function calculateProgramScore(
     .filter((s) => !coveredSet.has(s))
     .map((s) => ({ subdomain: s, need: needs[s] ?? 0 }));
 
+  // Original mapped subdomains excluded from this calculation because
+  // they're already covered. Computed once and reused below - this is
+  // purely a by-product of `coveredSet`, never of the mapping type.
+  const ignoredCoveredSubdomains = mapping.subdomains.filter((s) => coveredSet.has(s));
+
   if (considered.length === 0) {
     return {
       program,
       mappingType: mapping.type,
+      targetSubdomain: null,
       consideredSubdomains: [],
+      ignoredCoveredSubdomains,
       score: 0,
       formula: 'All mapped subdomains are already covered',
       contributingSubdomains: [],
@@ -51,7 +70,9 @@ export function calculateProgramScore(
     return {
       program,
       mappingType: 'SINGLE',
+      targetSubdomain: null,
       consideredSubdomains: considered,
+      ignoredCoveredSubdomains,
       score,
       formula,
       contributingSubdomains: considered.map((e) => e.subdomain),
@@ -65,7 +86,9 @@ export function calculateProgramScore(
     return {
       program,
       mappingType: 'AND',
+      targetSubdomain: null,
       consideredSubdomains: considered,
+      ignoredCoveredSubdomains,
       score,
       formula,
       contributingSubdomains: considered.map((e) => e.subdomain),
@@ -82,7 +105,9 @@ export function calculateProgramScore(
   return {
     program,
     mappingType: 'OR',
+    targetSubdomain: null,
     consideredSubdomains: considered,
+    ignoredCoveredSubdomains,
     score,
     formula,
     contributingSubdomains: considered.map((e) => e.subdomain),
