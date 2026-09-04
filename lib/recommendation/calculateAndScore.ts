@@ -11,7 +11,7 @@ export type ScoreCalculation = {
  */
 export function calculateAndScore(entries: SubdomainNeedEntry[]): ScoreCalculation {
   if (entries.length === 0) {
-    return { score: 0, formula: 'No subdomains to average' };
+    return { score: 0, formula: 'No subdomains to average.' };
   }
   const sum = entries.reduce((total, e) => total + e.need, 0);
   const score = sum / entries.length;
