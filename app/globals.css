@@ -357,3 +357,10 @@ body {
   background: #fafafe;
   padding: 12px 16px;
 }
+
+/* Section 5: program matrix */
+
+.matrix-table-wrap {
+  margin-top: 12px;
+  overflow-x: auto;
+}

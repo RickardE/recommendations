@@ -252,8 +252,9 @@ describe('selectRecommendations (subdomain-first)', () => {
       program('p-and', 'AND', ['Ångest', 'Other1']),
       program('p-or', 'OR', ['Ångest', 'Other2']),
     ];
-    // needs: Ångest=85, Other1=80, Other2=20
-    const scores = { Ångest: 15, Other1: 20, Other2: 80 };
+    // needs: Ångest=85, Other1=80, Other2=70 - Other2 is high enough to
+    // clear the OR bonus threshold, so p-or's bonus genuinely applies here.
+    const scores = { Ångest: 15, Other1: 20, Other2: 30 };
 
     const result = selectRecommendations(programs, scores, {
       ...DEFAULT_RECOMMENDATION_CONFIG,
@@ -269,7 +270,7 @@ describe('selectRecommendations (subdomain-first)', () => {
     const byId = Object.fromEntries(round.allScores.map((r) => [r.program.id, r]));
     expect(byId['p-single']?.score).toBe(85); // SINGLE: need itself
     expect(byId['p-and']?.score).toBeCloseTo(82.5, 5); // AND: avg(85, 80)
-    expect(byId['p-or']?.score).toBeCloseTo(87, 5); // OR: 85 + (20 * 0.1)
+    expect(byId['p-or']?.score).toBeCloseTo(92, 5); // OR: 85 + (70 * 0.1)
 
     // p-or's formula wins the comparison, so it's selected.
     expect(round.selected?.program.id).toBe('p-or');
@@ -365,6 +366,48 @@ describe('selectRecommendations: OR coverage rule', () => {
   });
 });
 
+// Fix: a mediocre OR companion need must not be able to tip an OR program
+// above a program that matches the dominant need exactly.
+describe('selectRecommendations: OR bonus threshold', () => {
+  it('a SINGLE program now wins over an OR program whose only companion need is mediocre', () => {
+    const programs: Program[] = [
+      // Manage stress is listed first, matching its position in the real
+      // table.tsv - this is also what the tie-break (input order) falls
+      // back on once the mediocre companion no longer inflates the OR score.
+      program('manage-stress', 'SINGLE', ['Stress']),
+      program('become-more-mindful', 'OR', ['Smärta', 'Stress']),
+    ];
+    // The exact reported scenario: Stress=99, Smärta=50 (an ordinary need).
+    const scores = { Stress: 1, Smärta: 50 };
+
+    const result = selectRecommendations(programs, scores, {
+      ...DEFAULT_RECOMMENDATION_CONFIG,
+      numberOfRecommendations: 1,
+    });
+
+    expect(result.rounds[0]?.targetSubdomain).toBe('Stress');
+    expect(result.recommendations[0]?.program.id).toBe('manage-stress');
+    expect(result.recommendations[0]?.score).toBe(99);
+  });
+
+  it('an OR program still wins when its companion need is genuinely elevated, not mediocre', () => {
+    const programs: Program[] = [
+      program('manage-stress', 'SINGLE', ['Stress']),
+      program('become-more-mindful', 'OR', ['Smärta', 'Stress']),
+    ];
+    // Stress=99, Smärta=90 - a real second problem, not an ordinary one.
+    const scores = { Stress: 1, Smärta: 10 };
+
+    const result = selectRecommendations(programs, scores, {
+      ...DEFAULT_RECOMMENDATION_CONFIG,
+      numberOfRecommendations: 1,
+    });
+
+    expect(result.recommendations[0]?.program.id).toBe('become-more-mindful');
+    expect(result.recommendations[0]?.score).toBe(100); // 99 + (90 * 0.1) = 108, capped
+  });
+});
+
 describe('selectRecommendations against the real matrix', () => {
   const tsvContent = fs.readFileSync(path.join(__dirname, '../../../data/table.tsv'), 'utf8');
   const programs = parseMatrix(tsvContent);
@@ -387,6 +430,20 @@ describe('selectRecommendations against the real matrix', () => {
 
     expect(result.rounds[0]?.targetSubdomain).toBe('Stress');
     expect(result.recommendations[0]?.program.name).toBe('Manage stress');
+  });
+
+  it('fixes the reported OR-bonus bug: Stress=99 with every other subdomain at an ordinary 50', () => {
+    const scores = Object.fromEntries(subdomains.map((s) => [s, 50]));
+    scores['Stress'] = 1; // need 99
+    const result = selectRecommendations(programs, scores);
+
+    // Before the fix, "Become more mindful" (OR: Smärta, Stress) scored
+    // 99 + (50 * 0.1) = 104, capped to 100, beating "Manage stress" (99)
+    // purely because Smärta happened to be at an ordinary need. Smärta=50
+    // no longer clears the bonus threshold, so Manage stress now wins.
+    expect(result.rounds[0]?.targetSubdomain).toBe('Stress');
+    expect(result.recommendations[0]?.program.name).toBe('Manage stress');
+    expect(result.recommendations[0]?.score).toBe(99);
   });
 
   it('labels every single-subdomain program from the real matrix as SINGLE, never AND', () => {

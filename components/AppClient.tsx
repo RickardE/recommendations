@@ -7,6 +7,7 @@ import UserScores from './UserScores';
 import Recommendations from './Recommendations';
 import RecommendationRounds from './RecommendationRounds';
 import ProgramScores from './ProgramScores';
+import ProgramMatrix from './ProgramMatrix';
 
 type Props = {
   programs: Program[];
@@ -85,6 +86,8 @@ export default function AppClient({ programs, subdomains, initialScores }: Props
           </ul>
         </section>
       )}
+
+      <ProgramMatrix programs={programs} />
     </main>
   );
 }

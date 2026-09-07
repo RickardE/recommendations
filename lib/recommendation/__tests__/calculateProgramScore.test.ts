@@ -79,7 +79,9 @@ describe('calculateProgramScore', () => {
     };
     const result = calculateProgramScore(program, { Smärta: 50, Stress: 81 }, new Set());
     expect(result.mappingType).toBe('OR');
-    expect(result.score).toBeCloseTo(86, 5); // 81 + (50 * 0.10) = 86
+    // Smärta (50) is below the OR bonus threshold, so it adds no bonus -
+    // the score is just the driver's need. See calculateOrScore.ts.
+    expect(result.score).toBe(81);
     // Driver: explains the score, does not limit coverage.
     expect(result.driverSubdomains).toEqual(['Stress']);
     // Coverage: selecting the program covers BOTH mapped subdomains.
