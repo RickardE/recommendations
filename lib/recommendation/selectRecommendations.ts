@@ -38,33 +38,40 @@ function buildSubdomainOrder(programs: Program[]): string[] {
  *   1. need = 100 - userScore for every subdomain (calculated once, up
  *      front - needs are static for the whole run).
  *   2-4. Among subdomains not yet covered, find the one with the highest
- *      need that at least one remaining program is still mapped to. That
- *      is this round's *target subdomain*.
- *   5-6. Every remaining program whose ORIGINAL mapping includes the
- *      target subdomain is a candidate, scored using its original mapping
- *      type (SINGLE/AND/OR - see calculateProgramScore) and only the
- *      subdomains still uncovered.
+ *      need that at least one *eligible* program is still mapped to (see
+ *      the STRICT COVERAGE RULE below for "eligible"). That is this
+ *      round's *target subdomain*.
+ *   5-6. Every eligible program whose ORIGINAL mapping includes the target
+ *      subdomain is a candidate, scored using its original mapping type
+ *      (SINGLE/AND/OR - see calculateProgramScore). Because eligibility
+ *      already guarantees a candidate's whole mapping is uncovered (see
+ *      below), it's always scored against its full original mapping -
+ *      there's never a partially-covered candidate in practice.
  *   7-8. The highest-scoring candidate is selected.
- *   9-10. COVERAGE RULE: selecting a program covers *every* one of its
- *      mapped subdomains that's still uncovered - all of them, regardless
- *      of mapping type. In particular, an OR program's "driver" (its
- *      strongest-need subdomain, which explains the score) is NOT the
- *      only thing that gets covered - see calculateProgramScore's OR
- *      branch. This is what stops a later round from recommending a
- *      different program purely to "re-cover" a subdomain the first
- *      program was already mapped to. The next round then repeats with
- *      the next highest-need still-uncovered subdomain.
+ *   9-10. Selecting a program covers *every* one of its mapped
+ *      subdomains - all of them, regardless of mapping type. The next
+ *      round then repeats with the next highest-need still-uncovered
+ *      subdomain.
  *
- * If no uncovered subdomain has any remaining candidate left (every
- * mapped program either got selected already or has nothing left
- * uncovered to offer), the round - and the whole run - stops there; there
- * is no "pick something anyway" fallback. A program is never recommended
- * again once every one of its mapped subdomains is covered.
+ * STRICT COVERAGE RULE: a program is only eligible while *none* of its
+ * mapped subdomains are covered - SINGLE, AND, and OR are all held to the
+ * exact same rule. The moment even one of a program's mapped subdomains
+ * gets covered (by *any* selection, including a different program's),
+ * that program is permanently disqualified, even though some of its other
+ * subdomains may still be uncovered. This guarantees the final
+ * recommendation set never shares a subdomain across two programs, at the
+ * cost of a subdomain sometimes becoming unreachable once every program
+ * mapped to it has been disqualified this way - see
+ * selectRecommendations.test.ts for a worked "orphaned subdomain" example
+ * from the real matrix (Tobak).
  *
- * Because candidates are only ever drawn from programs still mapped to the
- * (uncovered) target, and coverage now includes every considered
- * subdomain, every candidate necessarily covers the target if selected -
- * the `newCoverage.includes(target)` check below is a defensive
+ * If no uncovered subdomain has any eligible candidate left, the round -
+ * and the whole run - stops there; there is no "pick something anyway"
+ * fallback.
+ *
+ * Because a candidate's entire mapping is guaranteed uncovered (see the
+ * strict rule above), it necessarily covers the target if selected - the
+ * `newCoverage.includes(target)` check below is a defensive
  * belt-and-braces guard, not an expected filter.
  */
 export function selectRecommendations(
@@ -84,10 +91,31 @@ export function selectRecommendations(
   const subdomainOrder = buildSubdomainOrder(programs);
 
   for (let round = 1; round <= config.numberOfRecommendations; round += 1) {
-    const remaining = mappedPrograms.filter((p) => !selectedIds.has(p.id));
-    if (remaining.length === 0) break;
+    // STRICT COVERAGE RULE (see doc comment above): a program is eligible
+    // only while it hasn't been selected yet AND none of its mapped
+    // subdomains are covered - regardless of mapping type.
+    const remaining = mappedPrograms.filter(
+      (p) => !selectedIds.has(p.id) && !p.mappings[0]!.subdomains.some((s) => coveredSet.has(s))
+    );
 
     const coveredBefore = Array.from(coveredSet);
+
+    if (remaining.length === 0) {
+      // Every mapped program is either already selected or disqualified
+      // by the strict coverage rule - logged as its own 'none' round
+      // (rather than a silent stop) so the debug UI can show exactly
+      // when and why the run ran out of eligible candidates.
+      rounds.push({
+        round,
+        selectionType: 'none',
+        targetSubdomain: null,
+        allScores: [],
+        selected: null,
+        coveredBefore,
+        coveredAfter: coveredBefore,
+      });
+      break;
+    }
 
     // Steps 2-3: uncovered subdomains, highest need first. Array.sort is
     // stable, and subdomainOrder is already deterministic, so equal-need

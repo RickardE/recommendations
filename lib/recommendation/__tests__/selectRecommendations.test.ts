@@ -11,7 +11,13 @@ function program(id: string, type: 'SINGLE' | 'AND' | 'OR', subdomains: string[]
 }
 
 describe('selectRecommendations (subdomain-first)', () => {
-  it('excludes already-covered subdomains from later rounds', () => {
+  // STRICT COVERAGE RULE: a program is disqualified the moment ANY of its
+  // mapped subdomains is covered - even by a different program's
+  // selection - regardless of whether it has other, still-uncovered
+  // subdomains of its own. This guarantees zero subdomain overlap across
+  // the recommendation set, at the cost of "b" here never getting a
+  // chance to compete for Z once Y is covered by "a".
+  it('disqualifies a program entirely once any one of its mapped subdomains is covered by another program', () => {
     const programs: Program[] = [program('a', 'AND', ['X', 'Y']), program('b', 'OR', ['Y', 'Z'])];
     // needs: X=100, Y=80, Z=10
     const scores = { X: 0, Y: 20, Z: 90 };
@@ -25,12 +31,13 @@ describe('selectRecommendations (subdomain-first)', () => {
     expect(result.recommendations[0]?.program.id).toBe('a');
     expect(result.rounds[0]?.coveredAfter.sort()).toEqual(['X', 'Y']);
 
-    expect(result.rounds[1]?.targetSubdomain).toBe('Z');
-    const roundTwoB = result.rounds[1]?.allScores.find((r) => r.program.id === 'b');
-    // Y is already covered, so only Z should feed into round 2's score.
-    expect(roundTwoB?.consideredSubdomains.map((e) => e.subdomain)).toEqual(['Z']);
-    expect(roundTwoB?.ignoredCoveredSubdomains).toEqual(['Y']);
-    expect(roundTwoB?.score).toBe(10);
+    // b is mapped to Y, which is now covered - it's disqualified outright,
+    // even though Z is still uncovered and b is mapped to it too. So Z
+    // has no eligible candidate left, and round 2 finds no target at all.
+    expect(result.rounds[1]?.selectionType).toBe('none');
+    expect(result.rounds[1]?.targetSubdomain).toBeNull();
+    expect(result.rounds[1]?.allScores.some((s) => s.program.id === 'b')).toBe(false);
+    expect(result.recommendations).toHaveLength(1);
   });
 
   it('selects 3 diverse programs covering different subdomains', () => {
@@ -140,9 +147,11 @@ describe('selectRecommendations (subdomain-first)', () => {
     }
   });
 
-  // TEST 2: an AND program with one covered and one uncovered subdomain
-  // can still be selected, scored using only the uncovered subdomain.
-  it('TEST 2: an AND program can still be selected for its remaining uncovered subdomain', () => {
+  // TEST 2 (STRICT RULE): an AND program is now disqualified entirely as
+  // soon as ANY of its mapped subdomains is covered, even by a different
+  // program's selection, even though it still has an uncovered subdomain
+  // of its own (Ångest). It is never scored or selected for Ångest.
+  it('TEST 2: an AND program is disqualified once any one of its mapped subdomains is covered', () => {
     const programs: Program[] = [
       program('covers-depression-and-stress', 'AND', ['Depression', 'Stress']),
       program('and-program', 'AND', ['Depression', 'Stress', 'Ångest']),
@@ -155,24 +164,21 @@ describe('selectRecommendations (subdomain-first)', () => {
       numberOfRecommendations: 2,
     });
 
-    expect(result.recommendations.map((r) => r.program.id)).toEqual([
-      'covers-depression-and-stress',
-      'and-program',
-    ]);
+    // Only "covers-depression-and-stress" is ever recommended.
+    expect(result.recommendations.map((r) => r.program.id)).toEqual(['covers-depression-and-stress']);
 
-    const second = result.recommendations[1]!;
-    expect(result.rounds[1]?.targetSubdomain).toBe('Ångest');
-    expect(second.mappingType).toBe('AND');
-    expect(second.mappingType).not.toBe('SINGLE');
-    expect(second.consideredSubdomains.map((e) => e.subdomain)).toEqual(['Ångest']);
-    expect(second.ignoredCoveredSubdomains.sort()).toEqual(['Depression', 'Stress']);
-    expect(second.score).toBe(78);
-    expect(second.newCoverage).toEqual(['Ångest']);
+    // Ångest is left orphaned: and-program was the only program mapped to
+    // it, and it's disqualified by Depression/Stress being covered - so
+    // round 2 finds no eligible candidate for anything at all.
+    expect(result.rounds[1]?.selectionType).toBe('none');
+    expect(result.rounds[1]?.targetSubdomain).toBeNull();
+    expect(result.rounds[1]?.allScores.some((s) => s.program.id === 'and-program')).toBe(false);
   });
 
-  // TEST 3: an OR program with one covered and one uncovered subdomain can
-  // still be selected for the uncovered subdomain, ignoring the covered one.
-  it('TEST 3: an OR program can still be selected for its remaining uncovered subdomain', () => {
+  // TEST 3 (STRICT RULE): an OR program is likewise disqualified once any
+  // one of its mapped subdomains is covered, even though a genuinely
+  // uncovered subdomain of its own (Smärta) remains reachable in principle.
+  it('TEST 3: an OR program is disqualified once any one of its mapped subdomains is covered', () => {
     const programs: Program[] = [
       // Side-effect covers Stress while chasing the higher-need Other.
       program('and-drains-stress', 'AND', ['Other', 'Stress']),
@@ -186,17 +192,14 @@ describe('selectRecommendations (subdomain-first)', () => {
       numberOfRecommendations: 2,
     });
 
-    expect(result.recommendations.map((r) => r.program.id)).toEqual(['and-drains-stress', 'become-more-mindful']);
+    // Only "and-drains-stress" is ever recommended.
+    expect(result.recommendations.map((r) => r.program.id)).toEqual(['and-drains-stress']);
 
-    const second = result.recommendations[1]!;
-    expect(result.rounds[1]?.targetSubdomain).toBe('Smärta');
-    // TEST 5: mapping type never changes because of coverage.
-    expect(second.mappingType).toBe('OR');
-    expect(second.mappingType).not.toBe('SINGLE');
-    expect(second.consideredSubdomains.map((e) => e.subdomain)).toEqual(['Smärta']);
-    expect(second.ignoredCoveredSubdomains).toEqual(['Stress']);
-    expect(second.score).toBe(40);
-    expect(second.newCoverage).toEqual(['Smärta']);
+    // Smärta is left orphaned: become-more-mindful was the only program
+    // mapped to it, and it's disqualified by Stress being covered.
+    expect(result.rounds[1]?.selectionType).toBe('none');
+    expect(result.rounds[1]?.targetSubdomain).toBeNull();
+    expect(result.rounds[1]?.allScores.some((s) => s.program.id === 'become-more-mindful')).toBe(false);
   });
 
   // TEST 6: selection is subdomain-first - the program mapped to the
@@ -277,7 +280,7 @@ describe('selectRecommendations (subdomain-first)', () => {
     expect(round.selected?.mappingType).toBe('OR');
   });
 
-  it('stops once every mapped program has been selected', () => {
+  it('stops once every mapped program has been selected, logging a final "none" round', () => {
     const programs: Program[] = [program('p1', 'AND', ['A'])];
     const scores = { A: 50 };
 
@@ -287,7 +290,11 @@ describe('selectRecommendations (subdomain-first)', () => {
     });
 
     expect(result.recommendations).toHaveLength(1);
-    expect(result.rounds).toHaveLength(1);
+    // Round 1 selects p1; round 2 has no eligible program left at all, so
+    // it's logged as an explicit 'none' round rather than silently
+    // stopping - round 3 never runs.
+    expect(result.rounds).toHaveLength(2);
+    expect(result.rounds[1]?.selectionType).toBe('none');
   });
 });
 
@@ -313,7 +320,16 @@ describe('selectRecommendations: OR coverage rule', () => {
 
   // Test 2: a program overlapping only in already-covered OR subdomains
   // must not be selected as a way of re-targeting them.
-  it('Test 2: prevents a later, overlapping OR recommendation once its subdomains are already covered', () => {
+  // STRICT COVERAGE RULE: unlike the old "partial overlap is fine" rule,
+  // "b" is now disqualified entirely once 2 of its 3 mapped subdomains are
+  // covered by "a" - even though Tobacco is still genuinely uncovered and
+  // "b" is the only program mapped to it. Tobacco is left permanently
+  // orphaned for the rest of this run. (This mirrors a real case in
+  // data/table.tsv: "Create healthy routines" [Kost och matvanor OR
+  // Fysisk aktivitet] fully overlaps 2 of "Achive your goals and dreams"'s
+  // 3 subdomains [... OR Tobak OR ...], so selecting the former can now
+  // orphan Tobak.)
+  it('Test 2 (STRICT RULE): a program is disqualified once it overlaps an earlier selection at all, orphaning its other subdomain', () => {
     const programs: Program[] = [
       program('a', 'OR', ['Nutrition', 'Physical activity']),
       program('b', 'OR', ['Nutrition', 'Tobacco', 'Physical activity']),
@@ -329,16 +345,16 @@ describe('selectRecommendations: OR coverage rule', () => {
     // Round 1: Physical activity (96) is the highest need -> program a.
     expect(result.rounds[0]?.targetSubdomain).toBe('Physical activity');
     expect(result.recommendations[0]?.program.id).toBe('a');
-    // Selecting a covers BOTH Nutrition and Physical activity, not just
-    // the driver - so the next target must be Tobacco, not Nutrition.
     expect(result.rounds[0]?.coveredAfter.sort()).toEqual(['Nutrition', 'Physical activity']);
 
-    // Round 2: only Tobacco is left uncovered -> program b, scored using
-    // only Tobacco (Nutrition and Physical activity ignored, already covered).
-    expect(result.rounds[1]?.targetSubdomain).toBe('Tobacco');
-    expect(result.recommendations[1]?.program.id).toBe('b');
-    expect(result.recommendations[1]?.consideredSubdomains.map((e) => e.subdomain)).toEqual(['Tobacco']);
-    expect(result.recommendations[1]?.ignoredCoveredSubdomains.sort()).toEqual(['Nutrition', 'Physical activity']);
+    // Round 2: Tobacco (72) is the highest remaining need, but "b" - its
+    // only mapped program - is disqualified by its overlap with "a" on
+    // Nutrition/Physical activity. No eligible candidate exists for
+    // Tobacco (or anything else), so round 2 finds no target at all.
+    expect(result.rounds[1]?.selectionType).toBe('none');
+    expect(result.rounds[1]?.targetSubdomain).toBeNull();
+    expect(result.rounds[1]?.allScores.some((s) => s.program.id === 'b')).toBe(false);
+    expect(result.recommendations).toEqual([result.recommendations[0]]); // only "a" was ever recommended
   });
 
   // Test 5: a program whose mapped subdomains are ALL already covered
@@ -463,6 +479,37 @@ describe('selectRecommendations against the real matrix', () => {
         }
       }
     }
+  });
+
+  it('real-matrix example: a subset OR program winning its round can orphan a subdomain only reachable via a superset OR program', () => {
+    // "Create healthy routines" -> Kost och matvanor OR Fysisk aktivitet
+    // "Achive your goals and dreams" -> Kost och matvanor OR Tobak OR Fysisk aktivitet
+    // The latter is a strict superset of the former. Under the strict
+    // coverage rule, if "Create healthy routines" wins its round, "Achive
+    // your goals and dreams" - the only program mapped to Tobak - is
+    // disqualified outright, orphaning Tobak even though it's still a
+    // meaningfully high, genuinely uncovered need.
+    const scores = Object.fromEntries(subdomains.map((s) => [s, 100])); // need 0 everywhere else
+    scores['Kost och matvanor'] = 10; // need 90
+    scores['Fysisk aktivitet'] = 30; // need 70
+    scores['Tobak'] = 39; // need 61 - still a real, meaningful need
+
+    const result = selectRecommendations(programs, scores, {
+      ...DEFAULT_RECOMMENDATION_CONFIG,
+      numberOfRecommendations: 3,
+    });
+
+    expect(result.recommendations[0]?.program.name).toBe('Create healthy routines');
+    // "Achive your goals and dreams" competes (and loses) in round 1 like
+    // any other candidate, but from round 2 onward - once Kost och
+    // matvanor/Fysisk aktivitet are covered - it's disqualified outright
+    // and never appears as a candidate again, even though Tobak remains
+    // meaningfully uncovered.
+    const appearedAfterRound1 = result.rounds
+      .slice(1)
+      .some((r) => r.allScores.some((s) => s.program.name === 'Achive your goals and dreams'));
+    expect(appearedAfterRound1).toBe(false);
+    expect(result.recommendations.some((r) => r.program.name === 'Achive your goals and dreams')).toBe(false);
   });
 
   it('never lets a later round reconsider a subdomain covered by an earlier one', () => {
