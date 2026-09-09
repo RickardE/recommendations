@@ -97,9 +97,11 @@ describe('parseMatrix', () => {
       expect(program?.mappings).toEqual([{ type: 'AND', subdomains: ['Tidsupplevelse', 'Stress'] }]);
     });
 
-    it('parses "Achive your goals and dreams" as SINGLE (Tobak)', () => {
+    it('parses "Achive your goals and dreams" as a 3-way OR', () => {
       const program = programs.find((p) => p.name === 'Achive your goals and dreams');
-      expect(program?.mappings).toEqual([{ type: 'SINGLE', subdomains: ['Tobak'] }]);
+      expect(program?.mappings).toEqual([
+        { type: 'OR', subdomains: ['Tobak', 'Kost och matvanor', 'Fysisk aktivitet'] },
+      ]);
     });
 
     it('parses the malformed "Get to know your emotions" row as a 3-way AND', () => {
@@ -135,6 +137,8 @@ describe('parseMatrix', () => {
         'Tidsupplevelse',
         'Stress',
         'Tobak',
+        'Kost och matvanor',
+        'Fysisk aktivitet',
         'Depression',
         'Individuella inre upplevelser',
         'Mentalt välbefinnande',
@@ -142,8 +146,6 @@ describe('parseMatrix', () => {
         'Smärta',
         'Alkohol',
         'Sömn',
-        'Kost och matvanor',
-        'Fysisk aktivitet',
       ]);
     });
   });
