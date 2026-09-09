@@ -24,6 +24,7 @@ export default function ProgramCalculation({ result, showCoverage = true }: Prop
     formula,
     newCoverage,
     driverSubdomains,
+    bonusEligibleSubdomains,
   } = result;
 
   if (mappingType === null) {
@@ -65,7 +66,9 @@ export default function ProgramCalculation({ result, showCoverage = true }: Prop
                   ? 'averaged'
                   : driverSubdomains.includes(entry.subdomain)
                   ? 'strongest (driver)'
-                  : '+10% bonus'}
+                  : bonusEligibleSubdomains.includes(entry.subdomain)
+                  ? '+10% bonus'
+                  : 'below bonus threshold'}
               </td>
             </tr>
           ))}

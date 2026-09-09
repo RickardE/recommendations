@@ -6,6 +6,15 @@ export type OrScoreCalculation = {
   formula: string;
   /** The subdomain(s) with the highest need, i.e. the score's primary driver(s). */
   driverSubdomains: string[];
+  /**
+   * Non-driver subdomains that individually cleared OR_BONUS_MIN_NEED and
+   * therefore actually contributed to the bonus. A subset of the
+   * non-driver entries - the rest were too low-need to count. Single
+   * source of truth for "did this subdomain's need count toward the
+   * bonus", so callers (e.g. the UI) never have to re-derive the
+   * threshold check themselves.
+   */
+  bonusEligibleSubdomains: string[];
 };
 
 /**
@@ -44,7 +53,7 @@ export function calculateOrScore(
   bonusMinNeed: number = OR_BONUS_MIN_NEED
 ): OrScoreCalculation {
   if (entries.length === 0) {
-    return { score: 0, formula: 'No subdomains mapped', driverSubdomains: [] };
+    return { score: 0, formula: 'No subdomains mapped', driverSubdomains: [], bonusEligibleSubdomains: [] };
   }
 
   if (entries.length === 1) {
@@ -53,6 +62,7 @@ export function calculateOrScore(
       score: only.need,
       formula: `${only.need} (only mapped subdomain)`,
       driverSubdomains: [only.subdomain],
+      bonusEligibleSubdomains: [],
     };
   }
 
@@ -65,6 +75,7 @@ export function calculateOrScore(
       score: maxNeed,
       formula: `${maxNeed} (all mapped subdomains tied at the highest need)`,
       driverSubdomains: drivers.map((e) => e.subdomain),
+      bonusEligibleSubdomains: [],
     };
   }
 
@@ -75,6 +86,7 @@ export function calculateOrScore(
       score: maxNeed,
       formula: `${maxNeed} (no other mapped subdomain reaches the minimum need of ${bonusMinNeed} for a bonus)`,
       driverSubdomains: drivers.map((e) => e.subdomain),
+      bonusEligibleSubdomains: [],
     };
   }
 
@@ -93,5 +105,10 @@ export function calculateOrScore(
     avgOthers
   )} × 0.1) = ${round1(rawScore)}${cappedNote}`;
 
-  return { score, formula, driverSubdomains: drivers.map((e) => e.subdomain) };
+  return {
+    score,
+    formula,
+    driverSubdomains: drivers.map((e) => e.subdomain),
+    bonusEligibleSubdomains: qualifyingOthers.map((e) => e.subdomain),
+  };
 }

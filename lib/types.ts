@@ -80,6 +80,16 @@ export type ProgramScoreResult = {
    * Empty for SINGLE/AND, where the concept doesn't apply.
    */
   driverSubdomains: string[];
+  /**
+   * OR only: non-driver subdomains that individually cleared
+   * OR_BONUS_MIN_NEED and therefore actually contributed to the bonus - a
+   * subset of consideredSubdomains minus driverSubdomains. The UI uses
+   * this (rather than re-deriving the threshold check itself) to label
+   * each row honestly: a non-driver subdomain below the threshold
+   * contributed nothing, even though it's still shown as "considered".
+   * Empty for SINGLE/AND.
+   */
+  bonusEligibleSubdomains: string[];
 };
 
 export type SelectionType = 'primary' | 'none';

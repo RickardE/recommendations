@@ -42,7 +42,10 @@ npm test
 /data/table.tsv          Source of truth for programs & subdomain mappings
 ```
 
-See the top of `lib/matrixParser.ts` for the parsing assumptions, and the
-top of `lib/recommendation/selectRecommendations.ts` /
-`calculateOrScore.ts` / `calculateRedundancy.ts` for the algorithm
-assumptions — each is documented at the point it's made.
+See [ALGORITHM.md](ALGORITHM.md) for a full, plain-language explanation of
+the data model, scoring formulas, and the round-by-round selection
+algorithm — including the known trade-offs. For the fine print, see the
+top of `lib/matrixParser.ts` for the parsing assumptions, and the top of
+`lib/recommendation/selectRecommendations.ts` / `calculateOrScore.ts` /
+`calculateRedundancy.ts` for the algorithm assumptions — each is
+documented at the point it's made.

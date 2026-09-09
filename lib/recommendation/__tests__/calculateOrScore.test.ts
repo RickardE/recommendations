@@ -52,23 +52,38 @@ describe('calculateOrScore', () => {
   describe('the OR bonus threshold (OR_BONUS_MIN_NEED)', () => {
     it('adds no bonus when the only companion is below the threshold', () => {
       // Stress=99 (driver), Smärta=50 - the exact reported scenario.
-      const { score, driverSubdomains } = calculateOrScore([
+      const { score, driverSubdomains, bonusEligibleSubdomains } = calculateOrScore([
         { subdomain: 'Smärta', need: 50 },
         { subdomain: 'Stress', need: 99 },
       ]);
       expect(score).toBe(99); // no bonus at all - same as the driver alone
       expect(driverSubdomains).toEqual(['Stress']);
+      // UX fix: Smärta is still "considered" (shown in the UI) but did not
+      // qualify for the bonus - this is what the Role column reads to
+      // avoid contradicting the "no bonus" calculation text.
+      expect(bonusEligibleSubdomains).toEqual([]);
     });
 
     it('still adds the bonus normally when the companion is genuinely elevated', () => {
       // Stress=99 (driver), Smärta=90 - a real second problem, not a
       // mediocre one, so the bonus should still apply.
-      const { score, driverSubdomains } = calculateOrScore([
+      const { score, driverSubdomains, bonusEligibleSubdomains } = calculateOrScore([
         { subdomain: 'Smärta', need: 90 },
         { subdomain: 'Stress', need: 99 },
       ]);
       expect(score).toBe(100); // 99 + (90 * 0.1) = 108, capped to 100
       expect(driverSubdomains).toEqual(['Stress']);
+      expect(bonusEligibleSubdomains).toEqual(['Smärta']);
+    });
+
+    it('reports only the qualifying companions when some clear the threshold and some do not', () => {
+      // driver=99; Smärta=90 qualifies, Sömn=20 does not.
+      const { bonusEligibleSubdomains } = calculateOrScore([
+        { subdomain: 'Smärta', need: 90 },
+        { subdomain: 'Sömn', need: 20 },
+        { subdomain: 'Stress', need: 99 },
+      ]);
+      expect(bonusEligibleSubdomains).toEqual(['Smärta']);
     });
 
     it('treats a companion exactly at the threshold as qualifying (inclusive)', () => {

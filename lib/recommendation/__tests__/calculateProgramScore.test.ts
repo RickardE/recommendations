@@ -84,6 +84,11 @@ describe('calculateProgramScore', () => {
     expect(result.score).toBe(81);
     // Driver: explains the score, does not limit coverage.
     expect(result.driverSubdomains).toEqual(['Stress']);
+    // UX: Smärta is still shown as "considered" but did not clear the
+    // bonus threshold, so it must not be reported as bonus-eligible - the
+    // UI's Role column reads this to avoid contradicting the "no bonus"
+    // calculation text.
+    expect(result.bonusEligibleSubdomains).toEqual([]);
     // Coverage: selecting the program covers BOTH mapped subdomains.
     expect(result.newCoverage.sort()).toEqual(['Smärta', 'Stress']);
   });

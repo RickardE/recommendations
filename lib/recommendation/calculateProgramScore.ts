@@ -40,6 +40,7 @@ export function calculateProgramScore(
       contributingSubdomains: [],
       newCoverage: [],
       driverSubdomains: [],
+      bonusEligibleSubdomains: [],
     };
   }
 
@@ -64,6 +65,7 @@ export function calculateProgramScore(
       contributingSubdomains: [],
       newCoverage: [],
       driverSubdomains: [],
+      bonusEligibleSubdomains: [],
     };
   }
 
@@ -81,6 +83,7 @@ export function calculateProgramScore(
       // SINGLE: the one mapped subdomain is newly covered.
       newCoverage: considered.map((e) => e.subdomain),
       driverSubdomains: [],
+      bonusEligibleSubdomains: [],
     };
   }
 
@@ -102,10 +105,11 @@ export function calculateProgramScore(
       // considered.length.
       newCoverage: considered.map((e) => e.subdomain),
       driverSubdomains: [],
+      bonusEligibleSubdomains: [],
     };
   }
 
-  const { score, formula, driverSubdomains } = calculateOrScore(considered);
+  const { score, formula, driverSubdomains, bonusEligibleSubdomains } = calculateOrScore(considered);
   return {
     program,
     mappingType: 'OR',
@@ -125,5 +129,6 @@ export function calculateProgramScore(
     // Explanatory only - the strongest-need subdomain(s) that drove the
     // score. Must NOT be used to determine coverage.
     driverSubdomains,
+    bonusEligibleSubdomains,
   };
 }
