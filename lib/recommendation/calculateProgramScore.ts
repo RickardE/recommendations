@@ -41,6 +41,8 @@ export function calculateProgramScore(
       newCoverage: [],
       driverSubdomains: [],
       bonusEligibleSubdomains: [],
+      eligible: true,
+      belowFloorSubdomains: [],
     };
   }
 
@@ -66,6 +68,8 @@ export function calculateProgramScore(
       newCoverage: [],
       driverSubdomains: [],
       bonusEligibleSubdomains: [],
+      eligible: true,
+      belowFloorSubdomains: [],
     };
   }
 
@@ -84,11 +88,13 @@ export function calculateProgramScore(
       newCoverage: considered.map((e) => e.subdomain),
       driverSubdomains: [],
       bonusEligibleSubdomains: [],
+      eligible: true,
+      belowFloorSubdomains: [],
     };
   }
 
   if (mapping.type === 'AND') {
-    const { score, formula } = calculateAndScore(considered);
+    const { score, formula, eligible, belowFloorSubdomains } = calculateAndScore(considered);
     return {
       program,
       mappingType: 'AND',
@@ -99,13 +105,21 @@ export function calculateProgramScore(
       formula,
       contributingSubdomains: considered.map((e) => e.subdomain),
       // AND: every considered subdomain matters equally, so all of them
-      // are newly covered. This holds even when only one subdomain
-      // remains uncovered - the program is still AND, never SINGLE; the
-      // mapping type always comes from `mapping.type` above, never from
-      // considered.length.
-      newCoverage: considered.map((e) => e.subdomain),
+      // are newly covered - UNLESS the program is ineligible (see
+      // calculateAndScore.ts), in which case it must never cover anything,
+      // since it must never be selected. This is a defensive
+      // belt-and-braces guard: selectRecommendations.ts's eligibility
+      // pre-filter already keeps an ineligible program out of `remaining`
+      // entirely, so it should never reach this branch as a real
+      // candidate in the first place. This holds even when only one
+      // subdomain remains uncovered - the program is still AND, never
+      // SINGLE; the mapping type always comes from `mapping.type` above,
+      // never from considered.length.
+      newCoverage: eligible ? considered.map((e) => e.subdomain) : [],
       driverSubdomains: [],
       bonusEligibleSubdomains: [],
+      eligible,
+      belowFloorSubdomains,
     };
   }
 
@@ -130,5 +144,8 @@ export function calculateProgramScore(
     // score. Must NOT be used to determine coverage.
     driverSubdomains,
     bonusEligibleSubdomains,
+    // OR has no eligibility concept of its own - always eligible.
+    eligible: true,
+    belowFloorSubdomains: [],
   };
 }

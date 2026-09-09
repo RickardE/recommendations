@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { calculateProgramScore } from '../calculateProgramScore';
 import type { Program } from '../../types';
 
-const needs = { Stress: 90, Anxiety: 40, Depression: 70, Sömn: 10 };
+const needs = { Stress: 90, Anxiety: 65, Depression: 70, Sömn: 10 };
 
 describe('calculateProgramScore', () => {
   // TEST 1: "Get out of the blues" -> Depression (Depression need = 82).
@@ -27,9 +27,28 @@ describe('calculateProgramScore', () => {
     };
     const result = calculateProgramScore(program, needs, new Set());
     expect(result.mappingType).toBe('AND');
-    expect(result.score).toBeCloseTo(66.7, 1);
+    // avg(90, 65, 70) = 75, all >= 60 so the +10% eligibility bonus applies.
+    expect(result.eligible).toBe(true);
+    expect(result.score).toBeCloseTo(82.5, 1);
     expect(result.newCoverage.sort()).toEqual(['Anxiety', 'Depression', 'Stress']);
     expect(result.contributingSubdomains.sort()).toEqual(['Anxiety', 'Depression', 'Stress']);
+  });
+
+  it('disqualifies an AND program outright when one considered subdomain is below the eligibility floor', () => {
+    const program: Program = {
+      id: 'p1b',
+      name: 'p1b',
+      mappings: [{ type: 'AND', subdomains: ['Stress', 'Sömn'] }],
+    };
+    // Stress=90, Sömn=10 (from the shared `needs` above) - Sömn is well
+    // below the floor, so the program must never be selectable.
+    const result = calculateProgramScore(program, needs, new Set());
+    expect(result.eligible).toBe(false);
+    expect(result.belowFloorSubdomains).toEqual(['Sömn']);
+    expect(result.score).toBe(0);
+    // Defensive: an ineligible program must never report coverage, since
+    // it must never be selected.
+    expect(result.newCoverage).toEqual([]);
   });
 
   it('dispatches to the OR formula, and covers every mapped subdomain - not just the driver', () => {
@@ -102,17 +121,19 @@ describe('calculateProgramScore', () => {
     };
     const andNeeds = { Depression: 82, Stress: 81, Ångest: 78 };
 
-    it('TEST 3: averages all three needs before anything is covered', () => {
+    it('TEST 3: averages all three needs before anything is covered, then applies the bonus', () => {
       const result = calculateProgramScore(andProgram, andNeeds, new Set());
       expect(result.mappingType).toBe('AND');
-      expect(result.score).toBeCloseTo(80.33, 2); // (82 + 81 + 78) / 3
+      expect(result.eligible).toBe(true); // all three needs clear the floor
+      // (82 + 81 + 78) / 3 = 80.33, +10% bonus = 88.37
+      expect(result.score).toBeCloseTo(88.37, 1);
     });
 
     it('TEST 4: stays AND (not SINGLE) once only Ångest remains uncovered', () => {
       const result = calculateProgramScore(andProgram, andNeeds, new Set(['Depression', 'Stress']));
       expect(result.mappingType).toBe('AND');
       expect(result.mappingType).not.toBe('SINGLE');
-      expect(result.score).toBe(78);
+      expect(result.score).toBeCloseTo(85.8, 5); // 78 * 1.1 (Ångest alone still clears the floor)
       expect(result.newCoverage).toEqual(['Ångest']);
       expect(result.ignoredCoveredSubdomains.sort()).toEqual(['Depression', 'Stress']);
     });
@@ -181,9 +202,12 @@ describe('coverage rule: selecting a program covers every one of its mapped subd
       name: 'AND all three',
       mappings: [{ type: 'AND', subdomains: ['Depression', 'Anxiety', 'Stress'] }],
     };
-    const result = calculateProgramScore(program, { Depression: 70, Anxiety: 40, Stress: 90 }, new Set());
+    // All three needs clear the eligibility floor, so the program is
+    // actually selectable and covers everything it's mapped to.
+    const result = calculateProgramScore(program, { Depression: 70, Anxiety: 65, Stress: 90 }, new Set());
 
     expect(result.mappingType).toBe('AND');
+    expect(result.eligible).toBe(true);
     expect(result.newCoverage.sort()).toEqual(['Anxiety', 'Depression', 'Stress']);
   });
 

@@ -90,6 +90,21 @@ export type ProgramScoreResult = {
    * Empty for SINGLE/AND.
    */
   bonusEligibleSubdomains: string[];
+  /**
+   * false only for an AND program with at least one considered subdomain
+   * below AND_ELIGIBILITY_MIN_NEED - such a program must never be
+   * selected, regardless of score (see calculateAndScore.ts and the
+   * eligibility pre-filter in selectRecommendations.ts). Always true for
+   * SINGLE, OR, and an unmapped program, since only AND has this concept.
+   */
+  eligible: boolean;
+  /**
+   * AND only: considered subdomain(s) below AND_ELIGIBILITY_MIN_NEED - the
+   * reason `eligible` is false. Empty whenever eligible is true. The UI
+   * uses this (rather than re-deriving the threshold itself) to label each
+   * row honestly, the same pattern bonusEligibleSubdomains uses for OR.
+   */
+  belowFloorSubdomains: string[];
 };
 
 export type SelectionType = 'primary' | 'none';

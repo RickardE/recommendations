@@ -78,13 +78,32 @@ Just the one subdomain's need value, verbatim. No averaging, no bonus.
 ### AND
 
 ```
-relevance = average(need of every considered subdomain)
+eligible = every considered subdomain's need >= AND_ELIGIBILITY_MIN_NEED (60)
+
+if not eligible: relevance = 0 (disqualified - see §3)
+else:            relevance = min(100, average(need of every considered subdomain) * 1.10)
 ```
 
 Every mapped subdomain matters equally, so the average naturally
 penalizes an AND program that mixes one very-high-need subdomain with
-several ordinary ones - see the "known trade-offs" section below, this is
-a real, currently-accepted side effect of the formula as specified.
+several ordinary ones. Two rules address this, both keyed off the same
+60-need floor:
+
+- **Eligibility**: if even one considered subdomain's need falls below 60,
+  the whole program is disqualified - not just scored low, but never
+  selectable, for the rest of the run (see §3). A 3-subdomain AND program
+  with two subdomains at need 90 and one at need 55 is completely off the
+  table, even though two-thirds of it is clearly relevant.
+- **Bonus**: once every subdomain clears 60, the average gets a single
+  flat +10% bonus - not per subdomain, not compounding with subdomain
+  count, just one multiplier applied once, capped at 100 like OR.
+
+This is a real trade-off, not a full fix for AND's structural
+disadvantage: the bonus is a flat multiplier, so it doesn't specifically
+reward breadth (a 2-subdomain and a 4-subdomain AND program both just get
++10%), and the eligibility floor makes wider AND programs *harder* to
+qualify at all (more subdomains means more chances one is below 60) even
+though the intent was to help AND compete. See "known trade-offs" below.
 
 ### OR
 
@@ -134,6 +153,17 @@ mapped subdomains are covered yet - by anything, including a different
 program's selection. The moment even one of its subdomains gets covered,
 it's permanently disqualified, even if it has other, still-uncovered
 subdomains of its own.
+
+**AND programs have a second, independent way to be disqualified**: if
+any one of an AND program's mapped subdomains has a need below
+`AND_ELIGIBILITY_MIN_NEED` (60), it's disqualified for the *entire run*,
+starting in round 1 - before anything has even been covered yet. Unlike
+the coverage rule above (which only kicks in once some other selection
+covers a shared subdomain), this can make an AND program unreachable from
+the very first round, purely because of the user's own scores. Both
+disqualifications feed the same eligibility check in
+`selectRecommendations.ts`, computed once up front since needs are static
+for the whole run.
 
 This guarantees the final recommendation set never shares a subdomain
 across two programs - a strong, simple guarantee. The trade-off: a
@@ -216,22 +246,43 @@ no separate "stale" state to manage.
 
 ## 6. Known trade-offs and ideas not (yet) implemented
 
-- **AND programs are structurally disadvantaged.** Because AND averages
-  every mapped subdomain's need, a 4-subdomain AND program mixing one
-  high need with several ordinary ones scores far below a SINGLE or OR
-  program addressing that same high need alone. This was analyzed in
-  depth but a fix (e.g. a small "breadth bonus" mirroring OR's bonus) has
-  been discussed and deliberately **not implemented yet**.
+- **The AND eligibility floor can orphan a subdomain from round 1,
+  before anything is even covered.** Two subdomains in the current
+  `data/table.tsv` have *no* SINGLE or OR path at all -
+  **Tidsupplevelse** and **Individuella inre upplevelser** - they're only
+  ever reachable via AND programs. If every AND program mapped to one of
+  them has another subdomain sitting below the 60-need floor, that
+  subdomain becomes completely unaddressable for the whole run, no matter
+  how high its own need is. This is a data gap, not an algorithm bug: the
+  fix is adding a SINGLE or OR program for those two subdomains in
+  `table.tsv` (which - see the file-map's note on live-editing table.tsv -
+  takes effect immediately, no code change needed), the same way every
+  other subdomain already has a non-AND fallback.
+- **The AND bonus is a flat multiplier, not a breadth reward.** `avg *
+  1.10` boosts every eligible AND program by the same proportion
+  regardless of whether it has 2 or 4 subdomains - it doesn't specifically
+  compensate for the dilution that comes from averaging more subdomains
+  together, and the eligibility floor actually makes *wider* AND programs
+  *harder* to qualify at all (more subdomains = more chances one is below
+  60). A user with one standout need and otherwise-ordinary scores will
+  still see most AND programs excluded outright, with only SINGLE/OR
+  programs on that one subdomain left in contention. A true "breadth
+  bonus" (scaled by subdomain count, or by the minimum need rather than
+  the average) would close that gap further but was intentionally not
+  built - this simpler version was chosen first.
 - **The strict "any overlap disqualifies" coverage rule** (§3) can orphan
   a subdomain for the rest of a run, as shown in the Tobak example. A
   "middle ground" - disqualifying a program only once its overlap ratio
   with already-covered subdomains crosses some threshold, using the
   already-built (but currently unused) `calculateRedundancy.ts` - was
   discussed as a follow-up but not built.
-- **`OR_BONUS_MIN_NEED` (60) is a tuned constant**, not derived from the
-  original spec. It was chosen because it fixes the reported bug against
-  real data without changing any other tested scenario, but it's a
-  judgment call, not a mathematical necessity.
+- **`OR_BONUS_MIN_NEED` and `AND_ELIGIBILITY_MIN_NEED` are both tuned
+  constants (60)**, not derived from the original spec, and kept as two
+  separate constants even though they currently share a value - one gates
+  a bonus, the other gates eligibility itself, and they may need
+  independent tuning later. Both were chosen because they fix a reported
+  problem against real data without changing other tested scenarios, but
+  they're judgment calls, not mathematical necessities.
 - This is a **prototype**: no auth, no database, no persistence. Scores
   live only in React state for the current browser session.
 
@@ -244,7 +295,7 @@ no separate "stale" state to manage.
 | Need calculation | `lib/recommendation/calculateNeeds.ts` |
 | TSV parsing, mapping type derivation | `lib/matrixParser.ts` |
 | SINGLE formula | `lib/recommendation/calculateSingleScore.ts` |
-| AND formula | `lib/recommendation/calculateAndScore.ts` |
+| AND formula + eligibility floor + bonus | `lib/recommendation/calculateAndScore.ts` |
 | OR formula + bonus threshold | `lib/recommendation/calculateOrScore.ts` |
 | Per-program dispatch (SINGLE/AND/OR) | `lib/recommendation/calculateProgramScore.ts` |
 | The round-by-round algorithm | `lib/recommendation/selectRecommendations.ts` |

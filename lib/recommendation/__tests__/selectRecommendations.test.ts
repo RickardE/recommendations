@@ -86,7 +86,7 @@ describe('selectRecommendations (subdomain-first)', () => {
 
   it('breaks target-subdomain ties deterministically by first-appearance order', () => {
     const programs: Program[] = [program('p1', 'AND', ['A']), program('p2', 'AND', ['B'])];
-    const scores = { A: 50, B: 50 }; // equal needs -> A wins the tie, being mapped first
+    const scores = { A: 40, B: 40 }; // equal needs (60, at the AND floor) -> A wins the tie, being mapped first
 
     const result = selectRecommendations(programs, scores, {
       ...DEFAULT_RECOMMENDATION_CONFIG,
@@ -132,7 +132,7 @@ describe('selectRecommendations (subdomain-first)', () => {
       program('and-two', 'AND', ['Depression', 'Y']),
       program('single-depression', 'SINGLE', ['Depression']),
     ];
-    const scores = { Depression: 50, Y: 0 }; // needs: Depression=50, Y=100
+    const scores = { Depression: 35, Y: 0 }; // needs: Depression=65 (clears the AND floor), Y=100
 
     const result = selectRecommendations(programs, scores, {
       ...DEFAULT_RECOMMENDATION_CONFIG,
@@ -272,7 +272,7 @@ describe('selectRecommendations (subdomain-first)', () => {
 
     const byId = Object.fromEntries(round.allScores.map((r) => [r.program.id, r]));
     expect(byId['p-single']?.score).toBe(85); // SINGLE: need itself
-    expect(byId['p-and']?.score).toBeCloseTo(82.5, 5); // AND: avg(85, 80)
+    expect(byId['p-and']?.score).toBeCloseTo(90.75, 5); // AND: avg(85, 80) = 82.5, +10% bonus (both >= 60)
     expect(byId['p-or']?.score).toBeCloseTo(92, 5); // OR: 85 + (70 * 0.1)
 
     // p-or's formula wins the comparison, so it's selected.
@@ -282,7 +282,7 @@ describe('selectRecommendations (subdomain-first)', () => {
 
   it('stops once every mapped program has been selected, logging a final "none" round', () => {
     const programs: Program[] = [program('p1', 'AND', ['A'])];
-    const scores = { A: 50 };
+    const scores = { A: 20 }; // need 80, clears the AND floor
 
     const result = selectRecommendations(programs, scores, {
       ...DEFAULT_RECOMMENDATION_CONFIG,
@@ -481,35 +481,60 @@ describe('selectRecommendations against the real matrix', () => {
     }
   });
 
-  it('real-matrix example: a subset OR program winning its round can orphan a subdomain only reachable via a superset OR program', () => {
-    // "Create healthy routines" -> Kost och matvanor OR Fysisk aktivitet
-    // "Achive your goals and dreams" -> Kost och matvanor OR Tobak OR Fysisk aktivitet
-    // The latter is a strict superset of the former. Under the strict
-    // coverage rule, if "Create healthy routines" wins its round, "Achive
-    // your goals and dreams" - the only program mapped to Tobak - is
-    // disqualified outright, orphaning Tobak even though it's still a
-    // meaningfully high, genuinely uncovered need.
+  it('real-matrix example: an AND program winning on a higher-need subdomain can orphan an OR program\'s only other path', () => {
+    // "Improve work/life balance" -> Tidsupplevelse AND Stress
+    // "Become more mindful" -> Smärta OR Stress
+    // Smärta is only ever reachable via "Become more mindful". If
+    // Tidsupplevelse's need is high enough to make "Improve work/life
+    // balance" win before Stress is ever independently targeted, Stress
+    // gets covered as a side effect, which disqualifies "Become more
+    // mindful" outright under the strict coverage rule - orphaning Smärta
+    // even though its own need is still meaningfully high.
     const scores = Object.fromEntries(subdomains.map((s) => [s, 100])); // need 0 everywhere else
-    scores['Kost och matvanor'] = 10; // need 90
-    scores['Fysisk aktivitet'] = 30; // need 70
-    scores['Tobak'] = 39; // need 61 - still a real, meaningful need
+    scores['Tidsupplevelse'] = 10; // need 90
+    scores['Stress'] = 15; // need 85
+    scores['Smärta'] = 39; // need 61 - still a real, meaningful need
 
     const result = selectRecommendations(programs, scores, {
       ...DEFAULT_RECOMMENDATION_CONFIG,
       numberOfRecommendations: 3,
     });
 
-    expect(result.recommendations[0]?.program.name).toBe('Create healthy routines');
-    // "Achive your goals and dreams" competes (and loses) in round 1 like
-    // any other candidate, but from round 2 onward - once Kost och
-    // matvanor/Fysisk aktivitet are covered - it's disqualified outright
-    // and never appears as a candidate again, even though Tobak remains
-    // meaningfully uncovered.
-    const appearedAfterRound1 = result.rounds
-      .slice(1)
-      .some((r) => r.allScores.some((s) => s.program.name === 'Achive your goals and dreams'));
-    expect(appearedAfterRound1).toBe(false);
-    expect(result.recommendations.some((r) => r.program.name === 'Achive your goals and dreams')).toBe(false);
+    expect(result.rounds[0]?.targetSubdomain).toBe('Tidsupplevelse');
+    expect(result.recommendations[0]?.program.name).toBe('Improve work/life balance');
+    expect(result.rounds[0]?.coveredAfter.sort()).toEqual(['Stress', 'Tidsupplevelse']);
+
+    // "Become more mindful" never gets a chance to compete at all: Stress
+    // is covered as a side effect of round 1, before it's ever
+    // independently targeted, so "Become more mindful" is disqualified
+    // from the very first round it could otherwise have appeared in.
+    expect(result.rounds.every((r) => r.allScores.every((s) => s.program.name !== 'Become more mindful'))).toBe(
+      true
+    );
+    expect(result.recommendations.some((r) => r.program.name === 'Become more mindful')).toBe(false);
+  });
+
+  it('real-matrix example: the AND eligibility floor disqualifies a program even when its average would otherwise be competitive', () => {
+    // "Get to know your emotions" -> Depression AND Ångest AND Stress.
+    // Depression and Stress are both strongly elevated, but Ångest sits
+    // just below the eligibility floor - the whole program must never be
+    // picked, even though 2 of its 3 subdomains are genuinely urgent.
+    const scores = Object.fromEntries(subdomains.map((s) => [s, 100])); // need 0 everywhere else
+    scores['Depression'] = 10; // need 90
+    scores['Stress'] = 12; // need 88
+    scores['Ångest'] = 45; // need 55 - just below the floor of 60
+
+    const result = selectRecommendations(programs, scores, {
+      ...DEFAULT_RECOMMENDATION_CONFIG,
+      numberOfRecommendations: programs.length,
+    });
+
+    // "Get to know your emotions" must never appear as a candidate, in any
+    // round, for as long as Ångest stays below the floor.
+    expect(
+      result.rounds.every((r) => r.allScores.every((s) => s.program.name !== 'Get to know your emotions'))
+    ).toBe(true);
+    expect(result.recommendations.some((r) => r.program.name === 'Get to know your emotions')).toBe(false);
   });
 
   it('never lets a later round reconsider a subdomain covered by an earlier one', () => {

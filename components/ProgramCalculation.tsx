@@ -25,6 +25,8 @@ export default function ProgramCalculation({ result, showCoverage = true }: Prop
     newCoverage,
     driverSubdomains,
     bonusEligibleSubdomains,
+    eligible,
+    belowFloorSubdomains,
   } = result;
 
   if (mappingType === null) {
@@ -63,7 +65,9 @@ export default function ProgramCalculation({ result, showCoverage = true }: Prop
                 {mappingType === 'SINGLE'
                   ? 'matched'
                   : mappingType === 'AND'
-                  ? 'averaged'
+                  ? belowFloorSubdomains.includes(entry.subdomain)
+                    ? 'below minimum (disqualifies program)'
+                    : 'averaged'
                   : driverSubdomains.includes(entry.subdomain)
                   ? 'strongest (driver)'
                   : bonusEligibleSubdomains.includes(entry.subdomain)
@@ -104,6 +108,18 @@ export default function ProgramCalculation({ result, showCoverage = true }: Prop
           {driverSubdomains.join(', ')}
         </div>
       )}
+
+      {mappingType === 'AND' &&
+        (eligible ? (
+          <div className="muted small">
+            All subdomains meet the AND eligibility minimum - +10% bonus applied to the average.
+          </div>
+        ) : (
+          <div className="muted small warning">
+            Disqualified - can never be recommended while {belowFloorSubdomains.join(', ')} stay
+            {belowFloorSubdomains.length === 1 ? 's' : ''} below the AND eligibility minimum.
+          </div>
+        ))}
     </div>
   );
 }

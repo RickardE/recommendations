@@ -65,6 +65,13 @@ function buildSubdomainOrder(programs: Program[]): string[] {
  * selectRecommendations.test.ts for a worked "orphaned subdomain" example
  * from the real matrix (Tobak).
  *
+ * AND ELIGIBILITY FLOOR: independently of coverage, an AND program is
+ * disqualified for the *entire run* if even one of its mapped subdomains'
+ * need falls below AND_ELIGIBILITY_MIN_NEED (see calculateAndScore.ts) -
+ * computed once up front, since needs never change during a run. Unlike
+ * the coverage rule, this can exclude a program starting in round 1,
+ * before anything has been selected at all.
+ *
  * If no uncovered subdomain has any eligible candidate left, the round -
  * and the whole run - stops there; there is no "pick something anyway"
  * fallback.
@@ -90,12 +97,30 @@ export function selectRecommendations(
 
   const subdomainOrder = buildSubdomainOrder(programs);
 
+  // AND ELIGIBILITY FLOOR (see doc comment above): computed once, up
+  // front, against each program's full original mapping (coveredSet
+  // empty). This is safe to do outside the round loop because a program's
+  // `considered` set is always its full mapping whenever it's actually a
+  // live candidate (the coverage filter below guarantees that), so
+  // eligibility here never needs to be recomputed per round - only needs
+  // (static for the whole run) matter. Reusing calculateProgramScore here
+  // (rather than re-deriving the threshold check inline) keeps
+  // calculateAndScore.ts the single source of truth for what "below
+  // floor" means.
+  const ineligibleIds = new Set(
+    mappedPrograms.filter((p) => !calculateProgramScore(p, needs, new Set()).eligible).map((p) => p.id)
+  );
+
   for (let round = 1; round <= config.numberOfRecommendations; round += 1) {
     // STRICT COVERAGE RULE (see doc comment above): a program is eligible
-    // only while it hasn't been selected yet AND none of its mapped
-    // subdomains are covered - regardless of mapping type.
+    // only while it hasn't been selected yet, none of its mapped
+    // subdomains are covered, and (for AND) it clears the eligibility
+    // floor - regardless of mapping type otherwise.
     const remaining = mappedPrograms.filter(
-      (p) => !selectedIds.has(p.id) && !p.mappings[0]!.subdomains.some((s) => coveredSet.has(s))
+      (p) =>
+        !selectedIds.has(p.id) &&
+        !ineligibleIds.has(p.id) &&
+        !p.mappings[0]!.subdomains.some((s) => coveredSet.has(s))
     );
 
     const coveredBefore = Array.from(coveredSet);

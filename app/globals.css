@@ -42,6 +42,11 @@ body {
   font-size: 0.85em;
 }
 
+/* Overrides .muted's color when both are applied - order matters here. */
+.warning {
+  color: var(--danger);
+}
+
 .toolbar {
   display: flex;
   flex-wrap: wrap;
