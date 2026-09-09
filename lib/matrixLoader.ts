@@ -10,7 +10,7 @@ import type { Program } from './types';
  * easily-unit-testable function with no filesystem dependency.
  */
 export function loadMatrix(): Program[] {
-  const filePath = path.join(process.cwd(), 'data', 'table-new.tsv');
+  const filePath = path.join(process.cwd(), 'data', 'table.tsv');
   const content = fs.readFileSync(filePath, 'utf8');
   return parseMatrix(content);
 }
