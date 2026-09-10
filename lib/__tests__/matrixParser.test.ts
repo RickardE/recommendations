@@ -107,10 +107,10 @@ describe('parseMatrix', () => {
       expect(program?.mappings).toEqual([{ type: 'AND', subdomains: ['Depression', 'Ångest', 'Stress'] }]);
     });
 
-    it('parses "Increase your resilience" across 4 continuation lines', () => {
+    it('parses "Increase your resilience" across 5 continuation lines', () => {
       const program = programs.find((p) => p.name === 'Increase your resilience');
       expect(program?.mappings).toEqual([
-        { type: 'AND', subdomains: ['Tidsupplevelse', 'Stress', 'Mentalt välbefinnande'] },
+        { type: 'AND', subdomains: ['Tidsupplevelse', 'Stress', 'Mentalt välbefinnande', 'Sömn'] },
       ]);
     });
 
@@ -140,8 +140,8 @@ describe('parseMatrix', () => {
         'Mentalt välbefinnande',
         'Ångest',
         'Smärta',
-        'Alkohol',
         'Sömn',
+        'Alkohol',
         'Kost och matvanor',
         'Fysisk aktivitet',
       ]);
